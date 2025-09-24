@@ -39,10 +39,10 @@
         const SYMBOL = 'WIFUSDT';
         const TOKEN_MINT = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm';
         const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
-        const PROXY_URL = 'http://localhost:3000/proxy/'; // Setup Node.js proxy with API keys
 
         let chart, candleSeries;
         let indicatorSeries = {};
+        let indicatorsData = {};
         let data = []; // {time, open, high, low, close, volume}
         let features = []; // Array of feature objects
         let models = {};
@@ -58,6 +58,7 @@
             connectWebSocket();
             await fetchHistorical();
             engineerFeatures();
+            await updateData(); // Initial update
             await trainModels();
             backtest();
             updateChart();
@@ -104,7 +105,7 @@
             const tradesRecent = await fetch(`https://api.binance.com/api/v3/trades?symbol=${SYMBOL}&limit=1000`).then(res => res.json());
             const coingecko = await fetch('https://api.coingecko.com/api/v3/coins/dogwifhat/market_chart?vs_currency=usd&days=1&interval=minute').then(res => res.json());
 
-            const whales = await fetch(`${PROXY_URL}whale-alert?blockchain=solana&symbols=WIF&min_value_usd=100000`).then(res => res.json() || {transactions: []});
+            const whales = {transactions: []}; // No public API without key
 
             const holdersRes = await fetch(SOLANA_RPC, {
                 method: 'POST',
@@ -115,7 +116,7 @@
 
             const reddit = await fetch('https://www.reddit.com/search.json?q=WIF%20cryptocurrency&sort=new&limit=100').then(res => res.json() || {data: {children: []}});
 
-            const trends = await fetch(`${PROXY_URL}google-trends?keywords=dogwifhat`).then(res => res.json() || {interest_over_time: {timeline_data: [{values: [0]}]}});
+            const trends = {interest_over_time: {timeline_data: [{values: [0]}]}}; // No public API without key
 
             const latestFeature = {
                 bidAskSpread: parseFloat(depth.asks[0][0]) - parseFloat(depth.bids[0][0]),
@@ -153,15 +154,15 @@
             const period9 = 9;
             const period21 = 21;
 
-            indicatorSeries.ema = new TI.EMA({ period: period12, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.sma = new TI.SMA({ period: period20, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.macd = new TI.MACD({ values: closes, fastPeriod: period12, slowPeriod: period26, signalPeriod: period9 }).result.map((v, i) => ({ time: data[i].time, MACD: v.MACD, signal: v.signal, histogram: v.histogram }));
-            indicatorSeries.rsi = new TI.RSI({ period: period14, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.atr = new TI.ATR({ high: highs, low: lows, close: closes, period: period14 }).result.map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.bollinger = new TI.BollingerBands({ period: period20, stdDev: 2, values: closes }).result.map((v, i) => ({ time: data[i].time, middle: v.middle, upper: v.upper, lower: v.lower }));
-            indicatorSeries.vwap = calculateVWAP(highs, lows, closes, volumes).map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.obv = new TI.OBV({ close: closes, volume: volumes }).result.map((v, i) => ({ time: data[i].time, value: v }));
-            indicatorSeries.chaikin = new TI.ChaikinMoneyFlow({ high: highs, low: lows, close: closes, volume: volumes, period: period21 }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorsData.ema = new TI.EMA({ period: period12, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.sma = new TI.SMA({ period: period20, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.macd = new TI.MACD({ values: closes, fastPeriod: period12, slowPeriod: period26, signalPeriod: period9 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, MACD: v.MACD, signal: v.signal, histogram: v.histogram }));
+            indicatorsData.rsi = new TI.RSI({ period: period14, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.atr = new TI.ATR({ high: highs, low: lows, close: closes, period: period14 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.bollinger = new TI.BollingerBands({ period: period20, stdDev: 2, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, middle: v.middle, upper: v.upper, lower: v.lower }));
+            indicatorsData.vwap = calculateVWAP(highs, lows, closes, volumes).map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.obv = new TI.OBV({ close: closes, volume: volumes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
+            indicatorsData.chaikin = new TI.ChaikinMoneyFlow({ high: highs, low: lows, close: closes, volume: volumes, period: period21 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
         }
 
         function calculateVWAP(highs, lows, closes, volumes) {
@@ -172,13 +173,13 @@
                 const typical = (highs[i] + lows[i] + closes[i]) / 3;
                 cumTypicalVolume += typical * volumes[i];
                 cumVolume += volumes[i];
-                vwap.push(cumTypicalVolume / cumVolume);
+                vwap.push(cumTypicalVolume / cumVolume || 0);
             }
             return vwap;
         }
 
         async function loadModels() {
-            const featureDim = 20; // Count of features in latestFeature
+            const featureDim = 16; // bidAskSpread, depthImbalance, tradeImbalance, timeBetweenTrades, exchangeInflow, exchangeOutflow, topHolderConcentration, tokenVelocity, mintBurn, lpEvents, socialSentiment, trendsScore, whalePressure, liquidityAlarm, holderCohortMomentum, memeMomentum
             const timeSteps = 60;
 
             models.linear = tf.sequential();
@@ -245,7 +246,8 @@
             const timeSteps = 60;
             const xs = [];
             const ys = [];
-            const featureKeys = Object.keys(features[0] || {});
+            if (features.length < timeSteps) return;
+            const featureKeys = Object.keys(features[0]);
             for (let i = timeSteps; i < features.length; i++) {
                 const window = features.slice(i - timeSteps, i).map(f => featureKeys.map(k => f[k] || 0));
                 xs.push(window);
@@ -254,8 +256,8 @@
             if (xs.length === 0) return;
             const xsTensor = tf.tensor3d(xs);
             const ysTensor = tf.tensor1d(ys);
-            const xs2d = tf.reshape(xsTensor, [-1, featureKeys.length]);
-            const ys2d = tf.reshape(ysTensor, [-1, 1]);
+            const xs2d = tf.reshape(xsTensor, [xs.length, featureKeys.length]);
+            const ys2d = tf.reshape(ysTensor, [xs.length, 1]);
 
             await models.linear.fit(xs2d, ysTensor, { epochs: 20 });
             await models.mlp.fit(xs2d, ysTensor, { epochs: 20 });
@@ -277,6 +279,7 @@
             let preds = [];
             let actuals = [];
             for (let i = timeSteps; i < data.length; i++) {
+                if (features.length < i - timeSteps + 1) continue;
                 const window = tf.tensor3d([features.slice(i - timeSteps, i).map(f => Object.values(f))]);
                 const pred = models.ensemble.predict(window).dataSync()[0];
                 const actual = data[i].close - data[i - 1].close;
@@ -286,7 +289,7 @@
                 if (signal > 0 && position <= 0) {
                     position = portfolio / data[i].close * (1 - fee - slippage);
                     portfolio = 0;
-                    trades.push({ time: data[i].time * 1000, entry: data[i].close, direction: 'buy', setup: 'Ensemble signal positive' });
+                    trades.push({ time: data[i].time * 1000, entry: data[i].close, direction: 'buy', setup: 'Ensemble signal positive', exit: null, pnl: null });
                 } else if (signal < 0 && position > 0) {
                     portfolio = position * data[i].close * (1 - fee - slippage);
                     position = 0;
@@ -294,16 +297,16 @@
                     lastTrade.exit = data[i].close;
                     lastTrade.pnl = (lastTrade.exit - lastTrade.entry) / lastTrade.entry * 100;
                     returns.push(lastTrade.pnl / 100);
+                    peak = Math.max(peak, portfolio);
                 }
-                peak = Math.max(peak, portfolio + position * data[i].close);
             }
-            const meanRet = returns.reduce((a, b) => a + b, 0) / returns.length;
-            const stdRet = Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - meanRet, 2), 0) / returns.length);
-            metrics.sharpe = meanRet / stdRet * Math.sqrt(252 * 1440); // Annualized
-            metrics.drawdown = (peak - portfolio) / peak * 100;
-            metrics.mse = preds.reduce((a, b, i) => a + Math.pow(b - actuals[i], 2), 0) / preds.length;
-            metrics.mae = preds.reduce((a, b, i) => a + Math.abs(b - actuals[i]), 0) / preds.length;
-            metrics.accuracy = preds.filter((p, i) => Math.sign(p) === Math.sign(actuals[i])).length / preds.length * 100;
+            const meanRet = returns.reduce((a, b) => a + b, 0) / returns.length || 0;
+            const stdRet = Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - meanRet, 2), 0) / returns.length) || 0;
+            metrics.sharpe = stdRet ? meanRet / stdRet * Math.sqrt(252 * 1440) : 0; // Annualized
+            metrics.drawdown = peak ? (peak - portfolio) / peak * 100 : 0;
+            metrics.mse = preds.reduce((a, b, i) => a + Math.pow(b - actuals[i], 2), 0) / preds.length || 0;
+            metrics.mae = preds.reduce((a, b, i) => a + Math.abs(b - actuals[i]), 0) / preds.length || 0;
+            metrics.accuracy = preds.filter((p, i) => Math.sign(p) === Math.sign(actuals[i])).length / preds.length * 100 || 0;
             updateTable();
             updateMetrics();
         }
@@ -312,8 +315,8 @@
             if (features.length < 60) return;
             const window = tf.tensor3d([features.slice(-60).map(f => Object.values(f))]);
             const pred = (await models.ensemble.predict(window)).dataSync()[0];
-            const anomaly = detectAnomaly(window);
-            if (anomaly) return; // Skip if anomaly
+            const anomaly = detectAnomaly(tf.reshape(window, [1, Object.keys(features[0]).length]));
+            if (anomaly) return;
             const direction = pred > 0 ? 'buy' : 'sell';
             signals.push({ time: data[data.length - 1].time, type: direction, price: data[data.length - 1].close });
             executeTrade(direction, pred);
@@ -321,16 +324,16 @@
         }
 
         function detectAnomaly(x) {
-            const recon = models.autoencoder.predict(tf.reshape(x, [1, Object.keys(features[0]).length]));
+            const recon = models.autoencoder.predict(x);
             const error = tf.mean(tf.square(tf.sub(x, recon))).dataSync()[0];
-            return error > 0.1; // Threshold
+            return error > 0.1;
         }
 
         function executeTrade(direction, pred) {
             const entry = data[data.length - 1].close;
             trades.push({ time: Date.now(), entry, direction, setup: `Ensemble pred: ${pred.toFixed(4)}`, exit: null, pnl: null });
-            // In real, integrate with exchange API; here simulate hold 5min
             setTimeout(() => {
+                if (data.length === 0) return;
                 const current = data[data.length - 1].close;
                 const lastTrade = trades[trades.length - 1];
                 lastTrade.exit = current;
@@ -341,58 +344,64 @@
 
         function updateChart() {
             Object.values(indicatorSeries).forEach(series => {
-                if (Array.isArray(series)) series.forEach(s => chart.removeSeries(s));
-                else chart.removeSeries(series);
+                if (Array.isArray(series)) {
+                    series.forEach(s => chart.removeSeries(s));
+                } else {
+                    chart.removeSeries(series);
+                }
             });
             indicatorSeries = {};
 
             if (document.getElementById('toggle-ema').checked) {
                 indicatorSeries.ema = chart.addLineSeries({ color: 'blue' });
-                indicatorSeries.ema.setData(indicatorSeries.ema);
+                indicatorSeries.ema.setData(indicatorsData.ema || []);
             }
             if (document.getElementById('toggle-sma').checked) {
                 indicatorSeries.sma = chart.addLineSeries({ color: 'green' });
-                indicatorSeries.sma.setData(indicatorSeries.sma);
+                indicatorSeries.sma.setData(indicatorsData.sma || []);
             }
             if (document.getElementById('toggle-macd').checked) {
                 indicatorSeries.macdLine = chart.addLineSeries({ color: 'red' });
-                indicatorSeries.macdLine.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.MACD })));
+                indicatorSeries.macdLine.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.MACD })));
                 indicatorSeries.signalLine = chart.addLineSeries({ color: 'orange' });
-                indicatorSeries.signalLine.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.signal })));
+                indicatorSeries.signalLine.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.signal })));
                 indicatorSeries.histogram = chart.addHistogramSeries({ color: 'purple' });
-                indicatorSeries.histogram.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.histogram })));
+                indicatorSeries.histogram.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.histogram })));
+                indicatorSeries.macd = [indicatorSeries.macdLine, indicatorSeries.signalLine, indicatorSeries.histogram];
             }
             if (document.getElementById('toggle-rsi').checked) {
                 indicatorSeries.rsi = chart.addLineSeries({ color: 'cyan' });
-                indicatorSeries.rsi.setData(indicatorSeries.rsi);
+                indicatorSeries.rsi.setData(indicatorsData.rsi || []);
             }
             if (document.getElementById('toggle-atr').checked) {
                 indicatorSeries.atr = chart.addLineSeries({ color: 'magenta' });
-                indicatorSeries.atr.setData(indicatorSeries.atr);
+                indicatorSeries.atr.setData(indicatorsData.atr || []);
             }
             if (document.getElementById('toggle-bollinger').checked) {
                 indicatorSeries.bolMiddle = chart.addLineSeries({ color: 'black' });
-                indicatorSeries.bolMiddle.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.middle })));
+                indicatorSeries.bolMiddle.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.middle })));
                 indicatorSeries.bolUpper = chart.addLineSeries({ color: 'gray' });
-                indicatorSeries.bolUpper.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.upper })));
+                indicatorSeries.bolUpper.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.upper })));
                 indicatorSeries.bolLower = chart.addLineSeries({ color: 'gray' });
-                indicatorSeries.bolLower.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.lower })));
+                indicatorSeries.bolLower.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.lower })));
+                indicatorSeries.bollinger = [indicatorSeries.bolMiddle, indicatorSeries.bolUpper, indicatorSeries.bolLower];
             }
             if (document.getElementById('toggle-vwap').checked) {
                 indicatorSeries.vwap = chart.addLineSeries({ color: 'brown' });
-                indicatorSeries.vwap.setData(indicatorSeries.vwap);
+                indicatorSeries.vwap.setData(indicatorsData.vwap || []);
             }
             if (document.getElementById('toggle-obv').checked) {
                 indicatorSeries.obv = chart.addLineSeries({ color: 'pink' });
-                indicatorSeries.obv.setData(indicatorSeries.obv);
+                indicatorSeries.obv.setData(indicatorsData.obv || []);
             }
             if (document.getElementById('toggle-chaikin').checked) {
                 indicatorSeries.chaikin = chart.addLineSeries({ color: 'lime' });
-                indicatorSeries.chaikin.setData(indicatorSeries.chaikin);
+                indicatorSeries.chaikin.setData(indicatorsData.chaikin || []);
             }
             if (document.getElementById('toggle-models').checked) {
-                // Predictions as markers
                 candleSeries.setMarkers(signals.map(s => ({ time: s.time, position: s.type === 'buy' ? 'belowBar' : 'aboveBar', color: s.type === 'buy' ? '#00FF00' : '#FF0000', shape: 'circle', text: s.type })));
+            } else {
+                candleSeries.setMarkers([]);
             }
         }
 
@@ -409,38 +418,38 @@
         function calculateDepthImbalance(depth) {
             const bidVol = depth.bids.reduce((a, b) => a + parseFloat(b[1]), 0);
             const askVol = depth.asks.reduce((a, b) => a + parseFloat(b[1]), 0);
-            return (bidVol - askVol) / (bidVol + askVol);
+            return (bidVol - askVol) / (bidVol + askVol) || 0;
         }
 
         function calculateTradeImbalance(trades) {
             const buys = trades.filter(t => !t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
             const sells = trades.filter(t => t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
-            return (buys - sells) / (buys + sells);
+            return (buys - sells) / (buys + sells) || 0;
         }
 
         function calculateTimeBetweenTrades(trades) {
             if (trades.length < 2) return 0;
             const times = trades.map(t => t.time);
             const diffs = times.slice(1).map((t, i) => t - times[i]);
-            return diffs.reduce((a, b) => a + b, 0) / diffs.length / 1000;
+            return diffs.reduce((a, b) => a + b, 0) / diffs.length / 1000 || 0;
         }
 
         function calculateExchangeInflow(transactions) {
-            return transactions.filter(t => t.to && t.to.owner_type === 'exchange').reduce((a, t) => a + t.amount_usd, 0);
+            return transactions.filter(t => t.to && t.to.owner_type === 'exchange').reduce((a, t) => a + (t.amount_usd || 0), 0);
         }
 
         function calculateExchangeOutflow(transactions) {
-            return transactions.filter(t => t.from && t.from.owner_type === 'exchange').reduce((a, t) => a + t.amount_usd, 0);
+            return transactions.filter(t => t.from && t.from.owner_type === 'exchange').reduce((a, t) => a + (t.amount_usd || 0), 0);
         }
 
         function calculateTopHolderConcentration(holders) {
-            const total = holders.reduce((a, h) => a + h.uiAmount, 0);
-            const top10 = holders.slice(0, 10).reduce((a, h) => a + h.uiAmount, 0);
-            return top10 / total;
+            const total = holders.reduce((a, h) => a + (h.uiAmount || 0), 0);
+            const top10 = holders.slice(0, 10).reduce((a, h) => a + (h.uiAmount || 0), 0);
+            return total ? top10 / total : 0;
         }
 
         function calculateTokenVelocity(transactions) {
-            return transactions.length / 60; // Per min approx
+            return transactions.length / 60 || 0;
         }
 
         function calculateMintBurn(transactions) {
@@ -454,7 +463,7 @@
         function analyzeSocialSentiment(posts) {
             const positive = posts.filter(p => p.data.title.toLowerCase().includes('bullish') || p.data.title.toLowerCase().includes('up')).length;
             const negative = posts.filter(p => p.data.title.toLowerCase().includes('bearish') || p.data.title.toLowerCase().includes('down')).length;
-            return (positive - negative) / posts.length || 0;
+            return posts.length ? (positive - negative) / posts.length : 0;
         }
 
         function calculateWhalePressure(feature) {
