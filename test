@@ -1,200 +1,2258 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WIF/USDT ML Price Predictor</title>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
-<style>
-body { font-family: Arial; margin: 0; padding: 0; background: #0f0f0f; color: #fff;}
-#controls { padding: 10px; display: flex; flex-wrap: wrap; gap: 10px; background: #111;}
-button { padding: 5px 10px; cursor: pointer; }
-#chart { height: 600px; }
-#trade-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-#trade-table th, #trade-table td { border: 1px solid #444; padding: 4px; text-align: center; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WIF/USDT ML Price Predictor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ml-matrix/6.10.5/ml-matrix.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0d1421 0%, #1a202c 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(26, 32, 44, 0.9);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #2d3748;
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header h1 {
+            color: #00d4ff;
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 2rem;
+            margin-top: 0.5rem;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-connected { background-color: #10b981; }
+        .status-disconnected { background-color: #ef4444; }
+        .status-training { background-color: #f59e0b; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 1rem;
+            padding: 1rem 2rem;
+            height: calc(100vh - 120px);
+        }
+
+        .chart-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .chart-container {
+            background: rgba(26, 32, 44, 0.8);
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 1rem;
+            height: 70vh;
+            position: relative;
+            backdrop-filter: blur(5px);
+        }
+
+        .chart-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn.active {
+            background: linear-gradient(135deg, #00d4ff 0%, #0ea5e9 100%);
+            color: #1a202c;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .select {
+            padding: 0.5rem;
+            border: 1px solid #4a5568;
+            border-radius: 6px;
+            background: #2d3748;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+        }
+
+        .panel {
+            background: rgba(26, 32, 44, 0.8);
+            border: 1px solid #2d3748;
+            border-radius: 12px;
+            padding: 1rem;
+            backdrop-filter: blur(5px);
+        }
+
+        .panel h3 {
+            color: #00d4ff;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .metric {
+            padding: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+
+        .metric-label {
+            color: #a0aec0;
+            font-size: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .metric-positive { color: #10b981; }
+        .metric-negative { color: #ef4444; }
+        .metric-neutral { color: #f7fafc; }
+
+        .signals-table {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .signals-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .signals-table th,
+        .signals-table td {
+            padding: 0.5rem 0.25rem;
+            text-align: left;
+            border-bottom: 1px solid #2d3748;
+        }
+
+        .signals-table th {
+            background: rgba(0, 0, 0, 0.2);
+            color: #a0aec0;
+            position: sticky;
+            top: 0;
+        }
+
+        .signal-buy {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+        }
+
+        .signal-sell {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        .model-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .model-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+
+        .toggle {
+            position: relative;
+            width: 40px;
+            height: 20px;
+            background: #4a5568;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle.active {
+            background: #00d4ff;
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+
+        .toggle.active::after {
+            transform: translateX(20px);
+        }
+
+        .training-progress {
+            margin-top: 1rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #2d3748;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #0ea5e9);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .whale-alerts {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .whale-alert {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+
+        .alert-time {
+            color: #a0aec0;
+            font-size: 0.7rem;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #4a5568;
+            border-radius: 50%;
+            border-top-color: #00d4ff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .price-display {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .prediction-box {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(14, 165, 233, 0.1) 100%);
+            border: 1px solid #00d4ff;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .prediction-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #00d4ff;
+        }
+
+        .confidence-meter {
+            height: 6px;
+            background: #2d3748;
+            border-radius: 3px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+            transition: width 0.3s ease;
+        }
+
+        #chart {
+            width: 100%;
+            height: calc(100% - 60px);
+        }
+
+        @media (max-width: 1200px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto;
+            }
+            
+            .sidebar {
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                flex-direction: row;
+                gap: 1rem;
+            }
+        }
+    </style>
 </head>
 <body>
+    <div class="header">
+        <h1>🐕 WIF/USDT ML Price Predictor</h1>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot status-connected" id="binance-status"></div>
+                <span>Binance WebSocket</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot status-connected" id="data-status"></div>
+                <span>Data Pipeline</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot" id="training-status"></div>
+                <span>Model Training</span>
+            </div>
+            <div class="status-item">
+                <span id="current-price">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span id="24h-change">--</span>
+            </div>
+        </div>
+    </div>
 
-<div id="controls">
-  <button onclick="toggleSeries('EMA')">Toggle EMA</button>
-  <button onclick="toggleSeries('SMA')">Toggle SMA</button>
-  <button onclick="toggleSeries('MACD')">Toggle MACD</button>
-  <button onclick="toggleSeries('RSI')">Toggle RSI</button>
-  <button onclick="toggleSeries('BuySell')">Toggle Buy/Sell</button>
-  <button onclick="trainMLP()">Train MLP</button>
-</div>
+    <div class="main-container">
+        <div class="chart-section">
+            <div class="chart-controls">
+                <div class="control-group">
+                    <select class="select" id="timeframe">
+                        <option value="1m">1m</option>
+                        <option value="3m">3m</option>
+                        <option value="5m" selected>5m</option>
+                        <option value="15m">15m</option>
+                        <option value="30m">30m</option>
+                        <option value="1h">1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                    <button class="btn" id="refresh-data">🔄 Refresh</button>
+                </div>
+                
+                <div class="control-group">
+                    <button class="btn" id="show-indicators">📊 Indicators</button>
+                    <button class="btn" id="show-signals">🎯 Signals</button>
+                    <button class="btn" id="show-predictions">🔮 Predictions</button>
+                </div>
+                
+                <div class="control-group">
+                    <button class="btn btn-success" id="start-trading">▶ Start</button>
+                    <button class="btn btn-danger" id="stop-trading">⏹ Stop</button>
+                    <button class="btn btn-warning" id="train-models">🧠 Train</button>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="chart"></canvas>
+                <div id="chart-loading" class="loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;"></div>
+            </div>
+        </div>
 
-<div id="chart"></div>
-<table id="trade-table">
-  <thead>
-    <tr><th>Time</th><th>Price</th><th>Qty</th><th>Signal</th></tr>
-  </thead>
-  <tbody id="trade-body"></tbody>
-</table>
+        <div class="sidebar">
+            <!-- Market Data Panel -->
+            <div class="panel">
+                <h3>📈 Market Data</h3>
+                <div class="price-display" id="price-display">$0.00</div>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <div class="metric-label">Volume 24h</div>
+                        <div class="metric-value" id="volume-24h">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">High 24h</div>
+                        <div class="metric-value metric-positive" id="high-24h">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Low 24h</div>
+                        <div class="metric-value metric-negative" id="low-24h">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Spread</div>
+                        <div class="metric-value" id="spread">--</div>
+                    </div>
+                </div>
+            </div>
 
-<script>
-/************* Data Layer *************/
-let trades = [];
-let candles = [];
-let depth = { bids: [], asks: [] };
-let indicators = {};
-let signals = [];
+            <!-- Predictions Panel -->
+            <div class="panel">
+                <h3>🔮 ML Predictions</h3>
+                <div class="prediction-box">
+                    <div>Next 5min</div>
+                    <div class="prediction-value" id="pred-5min">--</div>
+                    <div class="confidence-meter">
+                        <div class="confidence-fill" id="conf-5min" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="prediction-box">
+                    <div>Next 15min</div>
+                    <div class="prediction-value" id="pred-15min">--</div>
+                    <div class="confidence-meter">
+                        <div class="confidence-fill" id="conf-15min" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
 
-const ws = new WebSocket("wss://stream.binance.com:9443/ws/wifusdt@trade");
-ws.onmessage = msg => {
-  const data = JSON.parse(msg.data);
-  const price = parseFloat(data.p);
-  const qty = parseFloat(data.q);
-  const time = data.T;
-  trades.push({ price, qty, time });
-  addCandle(price, time);
-  updateIndicators();
-  generateSignals();
-  updateChart();
-  updateTable();
-};
+            <!-- Technical Indicators Panel -->
+            <div class="panel">
+                <h3>📊 Technical Indicators</h3>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <div class="metric-label">RSI (14)</div>
+                        <div class="metric-value" id="rsi">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">MACD</div>
+                        <div class="metric-value" id="macd">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">BB Position</div>
+                        <div class="metric-value" id="bb-pos">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Volume Profile</div>
+                        <div class="metric-value" id="vol-profile">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">EMA20/50</div>
+                        <div class="metric-value" id="ema-cross">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">ATR</div>
+                        <div class="metric-value" id="atr">--</div>
+                    </div>
+                </div>
+            </div>
 
-/************* Candle Aggregation (1m) *************/
-function addCandle(price, time) {
-  const minute = Math.floor(time / 60000);
-  let candle = candles[candles.length-1];
-  if(!candle || candle.minute !== minute){
-    candle = { time: time, open: price, high: price, low: price, close: price, volume: 0, minute };
-    candles.push(candle);
-  } else {
-    candle.high = Math.max(candle.high, price);
-    candle.low = Math.min(candle.low, price);
-    candle.close = price;
-  }
-  candle.volume += qty;
-}
+            <!-- Model Controls Panel -->
+            <div class="panel">
+                <h3>🧠 ML Models</h3>
+                <div class="model-controls">
+                    <div class="model-control">
+                        <div class="toggle active" data-model="linear"></div>
+                        <span>Linear Regression</span>
+                    </div>
+                    <div class="model-control">
+                        <div class="toggle active" data-model="mlp"></div>
+                        <span>MLP Neural Net</span>
+                    </div>
+                    <div class="model-control">
+                        <div class="toggle active" data-model="lstm"></div>
+                        <span>LSTM</span>
+                    </div>
+                    <div class="model-control">
+                        <div class="toggle" data-model="cnn"></div>
+                        <span>1D CNN</span>
+                    </div>
+                    <div class="model-control">
+                        <div class="toggle" data-model="transformer"></div>
+                        <span>Transformer</span>
+                    </div>
+                    <div class="model-control">
+                        <div class="toggle active" data-model="ensemble"></div>
+                        <span>Ensemble</span>
+                    </div>
+                </div>
+                <div class="training-progress">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span>Training Progress</span>
+                        <span id="training-progress-text">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="training-progress"></div>
+                    </div>
+                </div>
+            </div>
 
-/************* Indicators *************/
-function EMA(values, period){
-  const k = 2/(period+1);
-  let ema = [values[0]];
-  for(let i=1;i<values.length;i++){
-    ema.push(values[i]*k + ema[i-1]*(1-k));
-  }
-  return ema;
-}
-function SMA(values, period){
-  let sma = [];
-  for(let i=0;i<values.length;i++){
-    if(i<period) { sma.push(values[i]); continue; }
-    let sum=0;
-    for(let j=i-period+1;j<=i;j++) sum+=values[j];
-    sma.push(sum/period);
-  }
-  return sma;
-}
-function RSI(values, period=14){
-  let rsis = [];
-  for(let i=0;i<values.length;i++){
-    if(i<period){ rsis.push(50); continue; }
-    let gain=0, loss=0;
-    for(let j=i-period+1;j<=i;j++){
-      let diff = values[j]-values[j-1];
-      if(diff>0) gain+=diff; else loss-=diff;
-    }
-    let rs = gain/(loss||1);
-    rsis.push(100-100/(1+rs));
-  }
-  return rsis;
-}
-function MACD(values, fast=12, slow=26, signal=9){
-  let emaFast = EMA(values, fast);
-  let emaSlow = EMA(values, slow);
-  let macd = emaFast.map((v,i)=>v-emaSlow[i]);
-  let signalLine = EMA(macd, signal);
-  return { macd, signalLine };
-}
+            <!-- On-chain & Whale Data Panel -->
+            <div class="panel">
+                <h3>🐋 On-chain & Whale Activity</h3>
+                <div class="metric-grid">
+                    <div class="metric">
+                        <div class="metric-label">Whale Pressure</div>
+                        <div class="metric-value" id="whale-pressure">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Exchange Flow</div>
+                        <div class="metric-value" id="exchange-flow">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Holder Concentration</div>
+                        <div class="metric-value" id="holder-conc">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Token Velocity</div>
+                        <div class="metric-value" id="token-velocity">--</div>
+                    </div>
+                </div>
+                <div class="whale-alerts" id="whale-alerts">
+                    <!-- Whale alerts will be populated here -->
+                </div>
+            </div>
 
-/************* Feature Update & Signals *************/
-function updateIndicators(){
-  const closes = candles.map(c=>c.close);
-  indicators.EMA = EMA(closes, 20);
-  indicators.SMA = SMA(closes, 20);
-  indicators.RSI = RSI(closes, 14);
-  const macdObj = MACD(closes);
-  indicators.MACD = macdObj.macd;
-  indicators.MACDSignal = macdObj.signalLine;
-}
+            <!-- Trading Signals Panel -->
+            <div class="panel">
+                <h3>🎯 Active Signals</h3>
+                <div class="signals-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Signal</th>
+                                <th>Price</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="signals-tbody">
+                            <!-- Signals will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
-function generateSignals(){
-  const len = candles.length;
-  if(len<2) return;
-  const lastPrice = candles[len-1].close;
-  const ema = indicators.EMA[len-1];
-  const rsi = indicators.RSI[len-1];
-  let signal = "";
-  if(lastPrice>ema && rsi<70) signal="BUY";
-  if(lastPrice<ema && rsi>30) signal="SELL";
-  signals.push({ time: candles[len-1].time, price:lastPrice, type: signal });
-}
+    <script>
+        class WIFPredictor {
+            constructor() {
+                this.isRunning = false;
+                this.currentPrice = 0;
+                this.priceHistory = [];
+                this.indicators = {};
+                this.models = {};
+                this.predictions = {};
+                this.signals = [];
+                this.whaleAlerts = [];
+                
+                // Chart configuration
+                this.chart = null;
+                this.chartData = {
+                    labels: [],
+                    datasets: []
+                };
+                
+                // WebSocket connections
+                this.binanceWS = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                
+                // Data buffers
+                this.tickData = [];
+                this.klineData = [];
+                this.orderbookData = [];
+                
+                // Feature engineering
+                this.technicalIndicators = {};
+                this.microstructureFeatures = {};
+                this.onchainFeatures = {};
+                this.whaleFeatures = {};
+                
+                // Model configurations
+                this.modelConfigs = {
+                    linear: { enabled: true, weight: 0.2 },
+                    mlp: { enabled: true, weight: 0.25 },
+                    lstm: { enabled: true, weight: 0.3 },
+                    cnn: { enabled: false, weight: 0.1 },
+                    transformer: { enabled: false, weight: 0.1 },
+                    ensemble: { enabled: true, weight: 0.05 }
+                };
+                
+                // Training parameters
+                this.sequenceLength = 60;
+                this.predictionHorizons = [1, 3, 5, 15, 30]; // minutes
+                
+                this.init();
+            }
 
-/************* Chart *************/
-const chart = LightweightCharts.createChart(document.getElementById('chart'), { width: window.innerWidth, height:600, layout: { background: { color:'#0f0f0f'}, textColor:'#fff' }, grid:{ vertLines:{ color:'#444' }, horzLines:{color:'#444'} }});
-const candleSeries = chart.addCandlestickSeries();
-let emaSeries = chart.addLineSeries({ color:'yellow', visible:true });
-let smaSeries = chart.addLineSeries({ color:'orange', visible:true });
-let macdSeries = chart.addLineSeries({ color:'cyan', visible:true });
-let buySellSeries = chart.addScatterSeries({ color:'green', shape:'arrowUp', visible:true });
+            async init() {
+                await this.initChart();
+                this.bindEvents();
+                await this.loadModels();
+                this.startDataPipeline();
+                this.startPredictionLoop();
+                console.log('WIF Predictor initialized successfully');
+            }
 
-function updateChart(){
-  candleSeries.setData(candles.map(c=>({ time:c.time/1000, open:c.open, high:c.high, low:c.low, close:c.close })));
-  emaSeries.setData(indicators.EMA.map((v,i)=>({ time:candles[i].time/1000, value:v })));
-  smaSeries.setData(indicators.SMA.map((v,i)=>({ time:candles[i].time/1000, value:v })));
-  macdSeries.setData(indicators.MACD.map((v,i)=>({ time:candles[i].time/1000, value:v })));
-  buySellSeries.setData(signals.filter(s=>s.type!=="").map(s=>({ time:s.time/1000, value:s.price })));
-}
+            async initChart() {
+                const ctx = document.getElementById('chart').getContext('2d');
+                
+                this.chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'WIF/USDT Price',
+                                data: [],
+                                borderColor: '#00d4ff',
+                                backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.1,
+                                pointRadius: 0,
+                                pointHoverRadius: 5
+                            },
+                            {
+                                label: 'EMA 20',
+                                data: [],
+                                borderColor: '#10b981',
+                                borderWidth: 1,
+                                fill: false,
+                                hidden: true
+                            },
+                            {
+                                label: 'EMA 50',
+                                data: [],
+                                borderColor: '#f59e0b',
+                                borderWidth: 1,
+                                fill: false,
+                                hidden: true
+                            },
+                            {
+                                label: 'BB Upper',
+                                data: [],
+                                borderColor: 'rgba(239, 68, 68, 0.5)',
+                                borderWidth: 1,
+                                fill: false,
+                                hidden: true
+                            },
+                            {
+                                label: 'BB Lower',
+                                data: [],
+                                borderColor: 'rgba(239, 68, 68, 0.5)',
+                                borderWidth: 1,
+                                fill: false,
+                                hidden: true
+                            },
+                            {
+                                label: 'Predictions',
+                                data: [],
+                                borderColor: '#8b5cf6',
+                                backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                                borderWidth: 2,
+                                fill: false,
+                                borderDash: [5, 5],
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Buy Signals',
+                                data: [],
+                                backgroundColor: '#10b981',
+                                borderColor: '#10b981',
+                                pointRadius: 6,
+                                pointStyle: 'triangle',
+                                showLine: false,
+                                pointRotation: 0
+                            },
+                            {
+                                label: 'Sell Signals',
+                                data: [],
+                                backgroundColor: '#ef4444',
+                                borderColor: '#ef4444',
+                                pointRadius: 6,
+                                pointStyle: 'triangle',
+                                showLine: false,
+                                pointRotation: 180
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'WIF/USDT Price Chart with ML Predictions',
+                                color: '#e2e8f0'
+                            },
+                            legend: {
+                                display: true,
+                                labels: {
+                                    color: '#e2e8f0',
+                                    filter: (legendItem) => {
+                                        return !legendItem.text.includes('BB') || 
+                                               !legendItem.datasetIndex || 
+                                               this.chart.getDatasetMeta(legendItem.datasetIndex).visible;
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(26, 32, 44, 0.9)',
+                                titleColor: '#00d4ff',
+                                bodyColor: '#e2e8f0',
+                                borderColor: '#2d3748',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'minute',
+                                    displayFormats: {
+                                        minute: 'HH:mm',
+                                        hour: 'HH:mm'
+                                    }
+                                },
+                                grid: {
+                                    color: 'rgba(45, 55, 72, 0.5)'
+                                },
+                                ticks: {
+                                    color: '#a0aec0'
+                                }
+                            },
+                            y: {
+                                position: 'right',
+                                grid: {
+                                    color: 'rgba(45, 55, 72, 0.5)'
+                                },
+                                ticks: {
+                                    color: '#a0aec0',
+                                    callback: function(value) {
+                                        return '$' + value.toFixed(6);
+                                    }
+                                }
+                            }
+                        },
+                        elements: {
+                            point: {
+                                hoverRadius: 8
+                            }
+                        },
+                        animation: {
+                            duration: 750,
+                            easing: 'easeInOutQuart'
+                        }
+                    }
+                });
+            }
 
-/************* Toggle Series *************/
-function toggleSeries(name){
-  switch(name){
-    case 'EMA': emaSeries.applyOptions({ visible: !emaSeries.options().visible }); break;
-    case 'SMA': smaSeries.applyOptions({ visible: !smaSeries.options().visible }); break;
-    case 'MACD': macdSeries.applyOptions({ visible: !macdSeries.options().visible }); break;
-    case 'BuySell': buySellSeries.applyOptions({ visible: !buySellSeries.options().visible }); break;
-  }
-}
+            bindEvents() {
+                // Control buttons
+                document.getElementById('start-trading').onclick = () => this.startTrading();
+                document.getElementById('stop-trading').onclick = () => this.stopTrading();
+                document.getElementById('train-models').onclick = () => this.trainModels();
+                document.getElementById('refresh-data').onclick = () => this.refreshData();
+                
+                // Timeframe selector
+                document.getElementById('timeframe').onchange = (e) => {
+                    this.changeTimeframe(e.target.value);
+                };
+                
+                // Chart control buttons
+                document.getElementById('show-indicators').onclick = () => this.toggleIndicators();
+                document.getElementById('show-signals').onclick = () => this.toggleSignals();
+                document.getElementById('show-predictions').onclick = () => this.togglePredictions();
+                
+                // Model toggles
+                document.querySelectorAll('.toggle').forEach(toggle => {
+                    toggle.onclick = () => {
+                        const model = toggle.dataset.model;
+                        const isActive = toggle.classList.contains('active');
+                        
+                        if (isActive) {
+                            toggle.classList.remove('active');
+                            this.modelConfigs[model].enabled = false;
+                        } else {
+                            toggle.classList.add('active');
+                            this.modelConfigs[model].enabled = true;
+                        }
+                        
+                        this.updateModelWeights();
+                    };
+                });
+            }
 
-/************* Trade Table *************/
-function updateTable(){
-  const tbody = document.getElementById('trade-body');
-  tbody.innerHTML = "";
-  trades.slice(-20).forEach(tr=>{
-    const sig = signals.find(s=>s.time===tr.time);
-    const trEl = document.createElement('tr');
-    trEl.innerHTML = `<td>${new Date(tr.time).toLocaleTimeString()}</td><td>${tr.price}</td><td>${tr.qty}</td><td>${sig?sig.type:""}</td>`;
-    tbody.appendChild(trEl);
-  });
-}
+            async loadModels() {
+                console.log('Loading pre-trained models...');
+                
+                try {
+                    // Initialize TensorFlow.js models
+                    this.models = {
+                        linear: await this.createLinearModel(),
+                        mlp: await this.createMLPModel(),
+                        lstm: await this.createLSTMModel(),
+                        cnn: await this.createCNNModel(),
+                        transformer: await this.createTransformerModel(),
+                        ensemble: await this.createEnsembleModel()
+                    };
+                    
+                    console.log('Models loaded successfully');
+                } catch (error) {
+                    console.error('Error loading models:', error);
+                }
+            }
 
-/************* MLP Training *************/
-let mlpModel=null;
-function trainMLP(){
-  const closes = candles.map(c=>c.close);
-  if(closes.length<60) return alert("Need more candles to train");
-  const X = [];
-  const y = [];
-  for(let i=60;i<closes.length;i++){
-    X.push(closes.slice(i-60,i));
-    y.push(closes[i]);
-  }
-  const Xtensor = tf.tensor2d(X);
-  const ytensor = tf.tensor2d(y, [y.length,1]);
-  mlpModel = tf.sequential();
-  mlpModel.add(tf.layers.dense({ units:64, activation:'relu', inputShape:[60] }));
-  mlpModel.add(tf.layers.dense({ units:32, activation:'relu' }));
-  mlpModel.add(tf.layers.dense({ units:1 }));
-  mlpModel.compile({ optimizer:'adam', loss:'meanSquaredError' });
-  mlpModel.fit(Xtensor, ytensor, { epochs:20 }).then(()=>{
-    alert("MLP trained!");
-  });
-}
-</script>
+            async createLinearModel() {
+                const model = tf.sequential({
+                    layers: [
+                        tf.layers.dense({
+                            inputShape: [50], // 50 features
+                            units: 1,
+                            activation: 'linear',
+                            kernelRegularizer: tf.regularizers.l2({ l2: 0.001 })
+                        })
+                    ]
+                });
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+                
+                return model;
+            }
+
+            async createMLPModel() {
+                const model = tf.sequential({
+                    layers: [
+                        tf.layers.dense({
+                            inputShape: [50],
+                            units: 128,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dropout({ rate: 0.3 }),
+                        tf.layers.dense({
+                            units: 64,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dropout({ rate: 0.2 }),
+                        tf.layers.dense({
+                            units: 32,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dense({
+                            units: 1,
+                            activation: 'linear'
+                        })
+                    ]
+                });
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+                
+                return model;
+            }
+
+            async createLSTMModel() {
+                const model = tf.sequential({
+                    layers: [
+                        tf.layers.lstm({
+                            inputShape: [this.sequenceLength, 50],
+                            units: 64,
+                            returnSequences: true,
+                            dropout: 0.2,
+                            recurrentDropout: 0.2
+                        }),
+                        tf.layers.lstm({
+                            units: 32,
+                            returnSequences: false,
+                            dropout: 0.2,
+                            recurrentDropout: 0.2
+                        }),
+                        tf.layers.dense({
+                            units: 16,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dense({
+                            units: 1,
+                            activation: 'linear'
+                        })
+                    ]
+                });
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+                
+                return model;
+            }
+
+            async createCNNModel() {
+                const model = tf.sequential({
+                    layers: [
+                        tf.layers.conv1d({
+                            inputShape: [this.sequenceLength, 50],
+                            filters: 64,
+                            kernelSize: 3,
+                            activation: 'relu',
+                            padding: 'same'
+                        }),
+                        tf.layers.maxPooling1d({ poolSize: 2 }),
+                        tf.layers.conv1d({
+                            filters: 32,
+                            kernelSize: 3,
+                            activation: 'relu',
+                            padding: 'same'
+                        }),
+                        tf.layers.globalMaxPooling1d(),
+                        tf.layers.dense({
+                            units: 32,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dropout({ rate: 0.3 }),
+                        tf.layers.dense({
+                            units: 1,
+                            activation: 'linear'
+                        })
+                    ]
+                });
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+                
+                return model;
+            }
+
+            async createTransformerModel() {
+                // Simplified transformer encoder
+                const model = tf.sequential({
+                    layers: [
+                        tf.layers.dense({
+                            inputShape: [this.sequenceLength, 50],
+                            units: 128,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dropout({ rate: 0.1 }),
+                        tf.layers.dense({
+                            units: 64,
+                            activation: 'relu'
+                        }),
+                        tf.layers.globalAveragePooling1d(),
+                        tf.layers.dense({
+                            units: 32,
+                            activation: 'relu'
+                        }),
+                        tf.layers.dense({
+                            units: 1,
+                            activation: 'linear'
+                        })
+                    ]
+                });
+                
+                model.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+                
+                return model;
+            }
+
+            async createEnsembleModel() {
+                // Simple ensemble averaging - will be enhanced with meta-learner
+                return {
+                    predict: async (features) => {
+                        const predictions = [];
+                        const weights = [];
+                        
+                        for (const [modelName, model] of Object.entries(this.models)) {
+                            if (modelName === 'ensemble') continue;
+                            if (!this.modelConfigs[modelName].enabled) continue;
+                            
+                            try {
+                                let pred;
+                                if (modelName === 'linear' || modelName === 'mlp') {
+                                    // Flatten sequence for non-sequential models
+                                    const flattened = features.reshape([-1, features.shape[1] * features.shape[2]]);
+                                    pred = await model.predict(flattened);
+                                } else {
+                                    pred = await model.predict(features);
+                                }
+                                
+                                const predValue = await pred.data();
+                                predictions.push(predValue[0]);
+                                weights.push(this.modelConfigs[modelName].weight);
+                                pred.dispose();
+                            } catch (error) {
+                                console.warn(`Error in ${modelName} prediction:`, error);
+                            }
+                        }
+                        
+                        if (predictions.length === 0) return 0;
+                        
+                        // Weighted average
+                        const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+                        const weightedSum = predictions.reduce((sum, pred, i) => sum + pred * weights[i], 0);
+                        
+                        return weightedSum / totalWeight;
+                    }
+                };
+            }
+
+            startDataPipeline() {
+                console.log('Starting data pipeline...');
+                this.connectBinanceWebSocket();
+                this.startOnChainDataCollection();
+                this.startWhaleAlertMonitoring();
+                this.startSocialSentimentTracking();
+            }
+
+            connectBinanceWebSocket() {
+                try {
+                    // Binance WebSocket for real-time data
+                    const wsUrl = 'wss://stream.binance.com:9443/ws/wifusdt@ticker/wifusdt@kline_5m/wifusdt@depth20@100ms/wifusdt@aggTrade';
+                    this.binanceWS = new WebSocket(wsUrl);
+                    
+                    this.binanceWS.onopen = () => {
+                        console.log('Connected to Binance WebSocket');
+                        this.updateStatus('binance-status', 'connected');
+                        this.reconnectAttempts = 0;
+                    };
+                    
+                    this.binanceWS.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.processBinanceData(data);
+                        } catch (error) {
+                            console.error('Error processing WebSocket data:', error);
+                        }
+                    };
+                    
+                    this.binanceWS.onclose = () => {
+                        console.log('Binance WebSocket disconnected');
+                        this.updateStatus('binance-status', 'disconnected');
+                        this.attemptReconnect();
+                    };
+                    
+                    this.binanceWS.onerror = (error) => {
+                        console.error('Binance WebSocket error:', error);
+                        this.updateStatus('binance-status', 'disconnected');
+                    };
+                    
+                } catch (error) {
+                    console.error('Error connecting to Binance WebSocket:', error);
+                    this.updateStatus('binance-status', 'disconnected');
+                }
+            }
+
+            async processBinanceData(data) {
+                if (data.e === '24hrTicker') {
+                    // 24hr ticker data
+                    const ticker = data;
+                    this.currentPrice = parseFloat(ticker.c);
+                    
+                    document.getElementById('current-price').textContent = `${this.currentPrice.toFixed(6)}`;
+                    document.getElementById('price-display').textContent = `${this.currentPrice.toFixed(6)}`;
+                    
+                    const change = parseFloat(ticker.P);
+                    const changeEl = document.getElementById('24h-change');
+                    changeEl.textContent = `${change > 0 ? '+' : ''}${change.toFixed(2)}%`;
+                    changeEl.className = change > 0 ? 'metric-positive' : 'metric-negative';
+                    
+                    document.getElementById('volume-24h').textContent = this.formatLargeNumber(parseFloat(ticker.v));
+                    document.getElementById('high-24h').textContent = `${parseFloat(ticker.h).toFixed(6)}`;
+                    document.getElementById('low-24h').textContent = `${parseFloat(ticker.l).toFixed(6)}`;
+                    
+                } else if (data.e === 'kline') {
+                    // Kline/candlestick data
+                    const kline = data.k;
+                    if (kline.x) { // Only process closed klines
+                        this.processKlineData(kline);
+                    }
+                    
+                } else if (data.e === 'depthUpdate') {
+                    // Order book depth update
+                    this.processOrderBookData(data);
+                    
+                } else if (data.e === 'aggTrade') {
+                    // Aggregate trade data
+                    this.processTradeData(data);
+                }
+            }
+
+            processKlineData(kline) {
+                const candlestick = {
+                    timestamp: kline.t,
+                    open: parseFloat(kline.o),
+                    high: parseFloat(kline.h),
+                    low: parseFloat(kline.l),
+                    close: parseFloat(kline.c),
+                    volume: parseFloat(kline.v),
+                    trades: kline.n,
+                    baseVolume: parseFloat(kline.V),
+                    quoteVolume: parseFloat(kline.Q)
+                };
+                
+                this.klineData.push(candlestick);
+                
+                // Keep only last 1000 candles
+                if (this.klineData.length > 1000) {
+                    this.klineData.shift();
+                }
+                
+                // Update price history for chart
+                this.priceHistory.push({
+                    x: new Date(candlestick.timestamp),
+                    y: candlestick.close
+                });
+                
+                if (this.priceHistory.length > 500) {
+                    this.priceHistory.shift();
+                }
+                
+                // Update chart
+                this.updateChart();
+                
+                // Calculate technical indicators
+                this.calculateTechnicalIndicators();
+                
+                // Update microstructure features
+                this.updateMicrostructureFeatures(candlestick);
+            }
+
+            processOrderBookData(data) {
+                const orderbook = {
+                    timestamp: Date.now(),
+                    bids: data.b.map(bid => [parseFloat(bid[0]), parseFloat(bid[1])]),
+                    asks: data.a.map(ask => [parseFloat(ask[0]), parseFloat(ask[1])])
+                };
+                
+                this.orderbookData.push(orderbook);
+                
+                if (this.orderbookData.length > 100) {
+                    this.orderbookData.shift();
+                }
+                
+                // Calculate spread
+                if (orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+                    const bestBid = orderbook.bids[0][0];
+                    const bestAsk = orderbook.asks[0][0];
+                    const spread = ((bestAsk - bestBid) / bestBid * 100).toFixed(4);
+                    document.getElementById('spread').textContent = `${spread}%`;
+                }
+                
+                // Update microstructure features
+                this.updateOrderBookFeatures(orderbook);
+            }
+
+            processTradeData(trade) {
+                const tradeData = {
+                    timestamp: trade.T,
+                    price: parseFloat(trade.p),
+                    quantity: parseFloat(trade.q),
+                    isBuyerMaker: trade.m,
+                    tradeId: trade.t
+                };
+                
+                this.tickData.push(tradeData);
+                
+                if (this.tickData.length > 10000) {
+                    this.tickData.shift();
+                }
+                
+                // Update trade-based features
+                this.updateTradeFeatures(tradeData);
+            }
+
+            calculateTechnicalIndicators() {
+                if (this.klineData.length < 50) return;
+                
+                const prices = this.klineData.map(k => k.close);
+                const volumes = this.klineData.map(k => k.volume);
+                const highs = this.klineData.map(k => k.high);
+                const lows = this.klineData.map(k => k.low);
+                
+                // RSI
+                const rsi = this.calculateRSI(prices, 14);
+                document.getElementById('rsi').textContent = rsi.toFixed(2);
+                document.getElementById('rsi').className = `metric-value ${rsi > 70 ? 'metric-negative' : rsi < 30 ? 'metric-positive' : 'metric-neutral'}`;
+                
+                // MACD
+                const macd = this.calculateMACD(prices);
+                document.getElementById('macd').textContent = macd.signal > 0 ? 'Bullish' : 'Bearish';
+                document.getElementById('macd').className = `metric-value ${macd.signal > 0 ? 'metric-positive' : 'metric-negative'}`;
+                
+                // EMAs
+                const ema20 = this.calculateEMA(prices, 20);
+                const ema50 = this.calculateEMA(prices, 50);
+                const emaCross = ema20 > ema50 ? 'Bull Cross' : 'Bear Cross';
+                document.getElementById('ema-cross').textContent = emaCross;
+                document.getElementById('ema-cross').className = `metric-value ${ema20 > ema50 ? 'metric-positive' : 'metric-negative'}`;
+                
+                // Bollinger Bands
+                const bb = this.calculateBollingerBands(prices, 20);
+                const bbPosition = ((prices[prices.length - 1] - bb.lower) / (bb.upper - bb.lower) * 100).toFixed(1);
+                document.getElementById('bb-pos').textContent = `${bbPosition}%`;
+                document.getElementById('bb-pos').className = `metric-value ${bbPosition > 80 ? 'metric-negative' : bbPosition < 20 ? 'metric-positive' : 'metric-neutral'}`;
+                
+                // ATR
+                const atr = this.calculateATR(highs, lows, prices, 14);
+                document.getElementById('atr').textContent = atr.toFixed(6);
+                
+                // Store indicators for model features
+                this.technicalIndicators = {
+                    rsi,
+                    macd: macd.histogram,
+                    ema20,
+                    ema50,
+                    bb_upper: bb.upper,
+                    bb_lower: bb.lower,
+                    bb_position: parseFloat(bbPosition),
+                    atr
+                };
+                
+                // Update chart indicators
+                this.updateChartIndicators();
+            }
+
+            calculateRSI(prices, period = 14) {
+                const changes = [];
+                for (let i = 1; i < prices.length; i++) {
+                    changes.push(prices[i] - prices[i - 1]);
+                }
+                
+                const gains = changes.map(change => change > 0 ? change : 0);
+                const losses = changes.map(change => change < 0 ? -change : 0);
+                
+                const avgGain = gains.slice(-period).reduce((sum, gain) => sum + gain, 0) / period;
+                const avgLoss = losses.slice(-period).reduce((sum, loss) => sum + loss, 0) / period;
+                
+                if (avgLoss === 0) return 100;
+                
+                const rs = avgGain / avgLoss;
+                return 100 - (100 / (1 + rs));
+            }
+
+            calculateMACD(prices, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+                const emaFast = this.calculateEMA(prices, fastPeriod);
+                const emaSlow = this.calculateEMA(prices, slowPeriod);
+                const macdLine = emaFast - emaSlow;
+                
+                // For simplicity, using a basic signal calculation
+                const signal = macdLine > 0 ? 1 : -1;
+                
+                return {
+                    macd: macdLine,
+                    signal: signal,
+                    histogram: macdLine
+                };
+            }
+
+            calculateEMA(prices, period) {
+                if (prices.length === 0) return 0;
+                
+                const multiplier = 2 / (period + 1);
+                let ema = prices[0];
+                
+                for (let i = 1; i < prices.length; i++) {
+                    ema = (prices[i] * multiplier) + (ema * (1 - multiplier));
+                }
+                
+                return ema;
+            }
+
+            calculateBollingerBands(prices, period = 20, multiplier = 2) {
+                const recentPrices = prices.slice(-period);
+                const sma = recentPrices.reduce((sum, price) => sum + price, 0) / period;
+                
+                const variance = recentPrices.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / period;
+                const stdDev = Math.sqrt(variance);
+                
+                return {
+                    upper: sma + (stdDev * multiplier),
+                    middle: sma,
+                    lower: sma - (stdDev * multiplier)
+                };
+            }
+
+            calculateATR(highs, lows, closes, period = 14) {
+                const trueRanges = [];
+                
+                for (let i = 1; i < highs.length; i++) {
+                    const high = highs[i];
+                    const low = lows[i];
+                    const prevClose = closes[i - 1];
+                    
+                    const tr1 = high - low;
+                    const tr2 = Math.abs(high - prevClose);
+                    const tr3 = Math.abs(low - prevClose);
+                    
+                    trueRanges.push(Math.max(tr1, tr2, tr3));
+                }
+                
+                const recentTR = trueRanges.slice(-period);
+                return recentTR.reduce((sum, tr) => sum + tr, 0) / period;
+            }
+
+            updateMicrostructureFeatures(candlestick) {
+                // Calculate volume-weighted metrics
+                const volumeProfile = this.calculateVolumeProfile();
+                document.getElementById('vol-profile').textContent = volumeProfile > 1 ? 'High' : 'Low';
+                document.getElementById('vol-profile').className = `metric-value ${volumeProfile > 1 ? 'metric-positive' : 'metric-negative'}`;
+                
+                // Update microstructure feature set
+                this.microstructureFeatures = {
+                    volume_ratio: volumeProfile,
+                    price_impact: this.calculatePriceImpact(),
+                    trade_intensity: this.calculateTradeIntensity(),
+                    order_flow_imbalance: this.calculateOrderFlowImbalance()
+                };
+            }
+
+            calculateVolumeProfile() {
+                if (this.klineData.length < 20) return 1;
+                
+                const recentVolumes = this.klineData.slice(-20).map(k => k.volume);
+                const currentVolume = recentVolumes[recentVolumes.length - 1];
+                const avgVolume = recentVolumes.slice(0, -1).reduce((sum, v) => sum + v, 0) / (recentVolumes.length - 1);
+                
+                return avgVolume > 0 ? currentVolume / avgVolume : 1;
+            }
+
+            calculatePriceImpact() {
+                if (this.tickData.length < 10) return 0;
+                
+                const recentTrades = this.tickData.slice(-10);
+                const volumeWeightedPrice = recentTrades.reduce((sum, trade) => sum + (trade.price * trade.quantity), 0) / 
+                                          recentTrades.reduce((sum, trade) => sum + trade.quantity, 0);
+                
+                return Math.abs((this.currentPrice - volumeWeightedPrice) / volumeWeightedPrice);
+            }
+
+            calculateTradeIntensity() {
+                if (this.tickData.length < 50) return 0;
+                
+                const recentTrades = this.tickData.slice(-50);
+                const timeSpan = recentTrades[recentTrades.length - 1].timestamp - recentTrades[0].timestamp;
+                
+                return timeSpan > 0 ? (recentTrades.length / timeSpan) * 1000 : 0; // trades per second * 1000
+            }
+
+            calculateOrderFlowImbalance() {
+                if (this.orderbookData.length === 0) return 0;
+                
+                const orderbook = this.orderbookData[this.orderbookData.length - 1];
+                const bidVolume = orderbook.bids.reduce((sum, bid) => sum + bid[1], 0);
+                const askVolume = orderbook.asks.reduce((sum, ask) => sum + ask[1], 0);
+                
+                return (bidVolume - askVolume) / (bidVolume + askVolume);
+            }
+
+            updateOrderBookFeatures(orderbook) {
+                // Calculate depth imbalance and other microstructure metrics
+                const depthImbalance = this.calculateDepthImbalance(orderbook);
+                const spreadTightness = this.calculateSpreadTightness(orderbook);
+                
+                // Update features
+                this.microstructureFeatures.depth_imbalance = depthImbalance;
+                this.microstructureFeatures.spread_tightness = spreadTightness;
+            }
+
+            calculateDepthImbalance(orderbook) {
+                const topBids = orderbook.bids.slice(0, 5).reduce((sum, bid) => sum + bid[1], 0);
+                const topAsks = orderbook.asks.slice(0, 5).reduce((sum, ask) => sum + ask[1], 0);
+                
+                return (topBids - topAsks) / (topBids + topAsks);
+            }
+
+            calculateSpreadTightness(orderbook) {
+                if (orderbook.bids.length === 0 || orderbook.asks.length === 0) return 0;
+                
+                const bestBid = orderbook.bids[0][0];
+                const bestAsk = orderbook.asks[0][0];
+                const midPrice = (bestBid + bestAsk) / 2;
+                
+                return (bestAsk - bestBid) / midPrice;
+            }
+
+            updateTradeFeatures(trade) {
+                // Update trade-based features
+                this.microstructureFeatures.last_trade_size = trade.quantity;
+                this.microstructureFeatures.trade_direction = trade.isBuyerMaker ? -1 : 1;
+            }
+
+            async startOnChainDataCollection() {
+                console.log('Starting on-chain data collection...');
+                
+                // Simulate on-chain data (in real implementation, use Bitquery/Moralis/etc)
+                setInterval(() => {
+                    this.updateOnChainFeatures();
+                }, 60000); // Update every minute
+            }
+
+            updateOnChainFeatures() {
+                // Simulated on-chain metrics (replace with real API calls)
+                const whaleActivity = Math.random() * 100;
+                const exchangeFlow = (Math.random() - 0.5) * 1000000; // Positive = inflow, negative = outflow
+                const holderConcentration = 65 + Math.random() * 10; // Percentage
+                const tokenVelocity = Math.random() * 5;
+                
+                // Update UI
+                document.getElementById('whale-pressure').textContent = whaleActivity.toFixed(1);
+                document.getElementById('whale-pressure').className = `metric-value ${whaleActivity > 70 ? 'metric-negative' : whaleActivity < 30 ? 'metric-positive' : 'metric-neutral'}`;
+                
+                document.getElementById('exchange-flow').textContent = exchangeFlow > 0 ? '+' + this.formatLargeNumber(exchangeFlow) : this.formatLargeNumber(exchangeFlow);
+                document.getElementById('exchange-flow').className = `metric-value ${exchangeFlow > 0 ? 'metric-negative' : 'metric-positive'}`;
+                
+                document.getElementById('holder-conc').textContent = `${holderConcentration.toFixed(1)}%`;
+                document.getElementById('holder-conc').className = `metric-value ${holderConcentration > 70 ? 'metric-negative' : 'metric-positive'}`;
+                
+                document.getElementById('token-velocity').textContent = tokenVelocity.toFixed(2);
+                
+                // Store features
+                this.onchainFeatures = {
+                    whale_activity: whaleActivity,
+                    exchange_flow: exchangeFlow,
+                    holder_concentration: holderConcentration,
+                    token_velocity: tokenVelocity,
+                    whale_pressure_index: this.calculateWhalePressureIndex(whaleActivity, exchangeFlow),
+                    liquidity_alarm_score: this.calculateLiquidityAlarmScore()
+                };
+            }
+
+            calculateWhalePressureIndex(whaleActivity, exchangeFlow) {
+                // Composite whale pressure metric
+                const activityWeight = 0.6;
+                const flowWeight = 0.4;
+                
+                const normalizedFlow = Math.tanh(exchangeFlow / 1000000); // Normalize large flows
+                return (whaleActivity * activityWeight) + (normalizedFlow * 50 + 50) * flowWeight;
+            }
+
+            calculateLiquidityAlarmScore() {
+                // Calculate liquidity stress indicator
+                const spreadWeight = 0.4;
+                const volumeWeight = 0.3;
+                const depthWeight = 0.3;
+                
+                const spreadScore = Math.min(100, (this.microstructureFeatures.spread_tightness || 0) * 10000);
+                const volumeScore = Math.max(0, 100 - (this.microstructureFeatures.volume_ratio || 1) * 50);
+                const depthScore = Math.abs(this.microstructureFeatures.depth_imbalance || 0) * 100;
+                
+                return (spreadScore * spreadWeight) + (volumeScore * volumeWeight) + (depthScore * depthWeight);
+            }
+
+            startWhaleAlertMonitoring() {
+                console.log('Starting whale alert monitoring...');
+                
+                // Simulate whale alerts (in real implementation, use Whale Alert API)
+                setInterval(() => {
+                    if (Math.random() > 0.7) { // 30% chance of whale alert
+                        this.addWhaleAlert();
+                    }
+                }, 30000); // Check every 30 seconds
+            }
+
+            addWhaleAlert() {
+                const types = ['exchange_inflow', 'exchange_outflow', 'whale_transfer', 'large_trade'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                const amount = (Math.random() * 1000000 + 100000).toFixed(0);
+                
+                const alert = {
+                    timestamp: Date.now(),
+                    type: type,
+                    amount: amount,
+                    message: `${type.replace('_', ' ').toUpperCase()}: ${this.formatLargeNumber(amount)} WIF`
+                };
+                
+                this.whaleAlerts.unshift(alert);
+                
+                if (this.whaleAlerts.length > 10) {
+                    this.whaleAlerts = this.whaleAlerts.slice(0, 10);
+                }
+                
+                this.updateWhaleAlertsUI();
+            }
+
+            updateWhaleAlertsUI() {
+                const container = document.getElementById('whale-alerts');
+                container.innerHTML = '';
+                
+                this.whaleAlerts.forEach(alert => {
+                    const alertEl = document.createElement('div');
+                    alertEl.className = 'whale-alert';
+                    alertEl.innerHTML = `
+                        <div>${alert.message}</div>
+                        <div class="alert-time">${new Date(alert.timestamp).toLocaleTimeString()}</div>
+                    `;
+                    container.appendChild(alertEl);
+                });
+            }
+
+            startSocialSentimentTracking() {
+                console.log('Starting social sentiment tracking...');
+                
+                // Simulate social sentiment data
+                setInterval(() => {
+                    this.updateSocialSentiment();
+                }, 120000); // Update every 2 minutes
+            }
+
+            updateSocialSentiment() {
+                // Simulated social sentiment metrics
+                const twitterSentiment = Math.random() * 100;
+                const redditSentiment = Math.random() * 100;
+                const googleTrends = Math.random() * 100;
+                
+                // Calculate composite meme momentum
+                const memeMomentum = (twitterSentiment * 0.4 + redditSentiment * 0.3 + googleTrends * 0.3);
+                
+                // Store features
+                this.whaleFeatures = {
+                    twitter_sentiment: twitterSentiment,
+                    reddit_sentiment: redditSentiment,
+                    google_trends: googleTrends,
+                    meme_momentum: memeMomentum,
+                    social_volume: Math.random() * 1000,
+                    sentiment_volatility: Math.abs(twitterSentiment - 50) + Math.abs(redditSentiment - 50)
+                };
+            }
+
+            async startPredictionLoop() {
+                console.log('Starting prediction loop...');
+                
+                setInterval(async () => {
+                    if (this.isRunning && this.klineData.length >= this.sequenceLength) {
+                        await this.makePredictions();
+                        this.generateTradingSignals();
+                    }
+                }, 10000); // Predict every 10 seconds
+            }
+
+            async makePredictions() {
+                try {
+                    const features = this.prepareFeatures();
+                    if (!features) return;
+                    
+                    // Make predictions with all enabled models
+                    const predictions = {};
+                    
+                    for (const [modelName, model] of Object.entries(this.models)) {
+                        if (!this.modelConfigs[modelName].enabled) continue;
+                        
+                        try {
+                            let prediction;
+                            
+                            if (modelName === 'ensemble') {
+                                prediction = await model.predict(features);
+                            } else if (modelName === 'linear' || modelName === 'mlp') {
+                                // Flatten for non-sequential models
+                                const flattened = features.reshape([-1, features.shape[1] * features.shape[2]]);
+                                const pred = await model.predict(flattened);
+                                const predData = await pred.data();
+                                prediction = predData[0];
+                                pred.dispose();
+                            } else {
+                                const pred = await model.predict(features);
+                                const predData = await pred.data();
+                                prediction = predData[0];
+                                pred.dispose();
+                            }
+                            
+                            predictions[modelName] = prediction;
+                            
+                        } catch (error) {
+                            console.warn(`Error in ${modelName} prediction:`, error);
+                        }
+                    }
+                    
+                    // Calculate ensemble prediction
+                    let ensemblePred = 0;
+                    let totalWeight = 0;
+                    
+                    for (const [modelName, pred] of Object.entries(predictions)) {
+                        if (modelName === 'ensemble') continue;
+                        ensemblePred += pred * this.modelConfigs[modelName].weight;
+                        totalWeight += this.modelConfigs[modelName].weight;
+                    }
+                    
+                    if (totalWeight > 0) {
+                        ensemblePred /= totalWeight;
+                    }
+                    
+                    // Store predictions
+                    this.predictions = {
+                        ...predictions,
+                        ensemble: ensemblePred,
+                        timestamp: Date.now()
+                    };
+                    
+                    // Update UI
+                    this.updatePredictionsUI();
+                    
+                    // Update chart with predictions
+                    this.updatePredictionsChart();
+                    
+                    features.dispose();
+                    
+                } catch (error) {
+                    console.error('Error making predictions:', error);
+                }
+            }
+
+            prepareFeatures() {
+                if (this.klineData.length < this.sequenceLength) return null;
+                
+                const recentData = this.klineData.slice(-this.sequenceLength);
+                const featureArray = [];
+                
+                for (let i = 0; i < recentData.length; i++) {
+                    const candle = recentData[i];
+                    const features = [];
+                    
+                    // Price features (normalized)
+                    const basePrice = recentData[0].close;
+                    features.push((candle.open - basePrice) / basePrice);
+                    features.push((candle.high - basePrice) / basePrice);
+                    features.push((candle.low - basePrice) / basePrice);
+                    features.push((candle.close - basePrice) / basePrice);
+                    
+                    // Volume features (normalized)
+                    const baseVolume = recentData[0].volume;
+                    features.push(baseVolume > 0 ? candle.volume / baseVolume : 0);
+                    
+                    // Technical indicators (if available)
+                    if (this.technicalIndicators.rsi) {
+                        features.push(this.technicalIndicators.rsi / 100);
+                        features.push(this.technicalIndicators.macd / 100);
+                        features.push((this.technicalIndicators.ema20 - basePrice) / basePrice);
+                        features.push((this.technicalIndicators.ema50 - basePrice) / basePrice);
+                        features.push(this.technicalIndicators.bb_position / 100);
+                        features.push(this.technicalIndicators.atr / basePrice);
+                    } else {
+                        features.push(...new Array(6).fill(0));
+                    }
+                    
+                    // Microstructure features
+                    features.push(this.microstructureFeatures.volume_ratio || 1);
+                    features.push(this.microstructureFeatures.price_impact || 0);
+                    features.push(this.microstructureFeatures.trade_intensity || 0);
+                    features.push(this.microstructureFeatures.order_flow_imbalance || 0);
+                    features.push(this.microstructureFeatures.depth_imbalance || 0);
+                    features.push(this.microstructureFeatures.spread_tightness || 0);
+                    features.push(this.microstructureFeatures.trade_direction || 0);
+                    
+                    // On-chain features
+                    features.push((this.onchainFeatures.whale_activity || 50) / 100);
+                    features.push(Math.tanh((this.onchainFeatures.exchange_flow || 0) / 1000000));
+                    features.push((this.onchainFeatures.holder_concentration || 70) / 100);
+                    features.push((this.onchainFeatures.token_velocity || 2) / 10);
+                    features.push((this.onchainFeatures.whale_pressure_index || 50) / 100);
+                    features.push((this.onchainFeatures.liquidity_alarm_score || 50) / 100);
+                    
+                    // Social sentiment features
+                    features.push((this.whaleFeatures.twitter_sentiment || 50) / 100);
+                    features.push((this.whaleFeatures.reddit_sentiment || 50) / 100);
+                    features.push((this.whaleFeatures.google_trends || 50) / 100);
+                    features.push((this.whaleFeatures.meme_momentum || 50) / 100);
+                    features.push((this.whaleFeatures.social_volume || 500) / 1000);
+                    features.push((this.whaleFeatures.sentiment_volatility || 50) / 100);
+                    
+                    // Time features
+                    const hour = new Date(candle.timestamp).getHours();
+                    const dayOfWeek = new Date(candle.timestamp).getDay();
+                    features.push(Math.sin(2 * Math.PI * hour / 24));
+                    features.push(Math.cos(2 * Math.PI * hour / 24));
+                    features.push(Math.sin(2 * Math.PI * dayOfWeek / 7));
+                    features.push(Math.cos(2 * Math.PI * dayOfWeek / 7));
+                    
+                    // Market structure features
+                    features.push(candle.trades / 1000); // Trade count normalized
+                    features.push((candle.high - candle.low) / candle.close); // Volatility proxy
+                    features.push((candle.close - candle.open) / candle.open); // Returns
+                    
+                    // Ensure exactly 50 features
+                    while (features.length < 50) {
+                        features.push(0);
+                    }
+                    features.splice(50); // Trim to exactly 50
+                    
+                    featureArray.push(features);
+                }
+                
+                return tf.tensor3d([featureArray]);
+            }
+
+            updatePredictionsUI() {
+                if (!this.predictions.ensemble) return;
+                
+                const currentPrice = this.currentPrice;
+                const prediction = this.predictions.ensemble;
+                
+                // Calculate predicted price change
+                const priceChange = prediction * currentPrice;
+                const predictedPrice = currentPrice + priceChange;
+                
+                // Update 5min prediction
+                const change5min = (priceChange / currentPrice * 100).toFixed(2);
+                const pred5minEl = document.getElementById('pred-5min');
+                pred5minEl.textContent = `${change5min > 0 ? '+' : ''}${change5min}%`;
+                pred5minEl.className = `prediction-value ${change5min > 0 ? 'metric-positive' : 'metric-negative'}`;
+                
+                // Calculate confidence (simplified)
+                const confidence = Math.min(100, Math.abs(prediction) * 1000);
+                document.getElementById('conf-5min').style.width = `${confidence}%`;
+                
+                // Update 15min prediction (scaled)
+                const change15min = (change5min * 1.5).toFixed(2);
+                const pred15minEl = document.getElementById('pred-15min');
+                pred15minEl.textContent = `${change15min > 0 ? '+' : ''}${change15min}%`;
+                pred15minEl.className = `prediction-value ${change15min > 0 ? 'metric-positive' : 'metric-negative'}`;
+                
+                document.getElementById('conf-15min').style.width = `${confidence * 0.8}%`;
+            }
+
+            generateTradingSignals() {
+                if (!this.predictions.ensemble) return;
+                
+                const prediction = this.predictions.ensemble;
+                const confidence = Math.abs(prediction);
+                const currentPrice = this.currentPrice;
+                
+                // Signal thresholds
+                const strongThreshold = 0.002; // 0.2% price change
+                const moderateThreshold = 0.001; // 0.1% price change
+                
+                let signal = null;
+                
+                if (prediction > strongThreshold && confidence > 0.001) {
+                    signal = {
+                        type: 'BUY',
+                        strength: 'STRONG',
+                        price: currentPrice,
+                        confidence: Math.min(100, confidence * 1000),
+                        timestamp: Date.now(),
+                        reason: `Strong bullish prediction: +${(prediction * 100).toFixed(2)}%`
+                    };
+                } else if (prediction > moderateThreshold && confidence > 0.0005) {
+                    signal = {
+                        type: 'BUY',
+                        strength: 'MODERATE',
+                        price: currentPrice,
+                        confidence: Math.min(100, confidence * 1000),
+                        timestamp: Date.now(),
+                        reason: `Moderate bullish prediction: +${(prediction * 100).toFixed(2)}%`
+                    };
+                } else if (prediction < -strongThreshold && confidence > 0.001) {
+                    signal = {
+                        type: 'SELL',
+                        strength: 'STRONG',
+                        price: currentPrice,
+                        confidence: Math.min(100, confidence * 1000),
+                        timestamp: Date.now(),
+                        reason: `Strong bearish prediction: ${(prediction * 100).toFixed(2)}%`
+                    };
+                } else if (prediction < -moderateThreshold && confidence > 0.0005) {
+                    signal = {
+                        type: 'SELL',
+                        strength: 'MODERATE',
+                        price: currentPrice,
+                        confidence: Math.min(100, confidence * 1000),
+                        timestamp: Date.now(),
+                        reason: `Moderate bearish prediction: ${(prediction * 100).toFixed(2)}%`
+                    };
+                }
+                
+                if (signal) {
+                    this.signals.unshift(signal);
+                    
+                    // Keep only last 50 signals
+                    if (this.signals.length > 50) {
+                        this.signals = this.signals.slice(0, 50);
+                    }
+                    
+                    this.updateSignalsUI();
+                    this.addSignalToChart(signal);
+                }
+            }
+
+            updateSignalsUI() {
+                const tbody = document.getElementById('signals-tbody');
+                tbody.innerHTML = '';
+                
+                this.signals.slice(0, 10).forEach(signal => {
+                    const row = document.createElement('tr');
+                    row.className = signal.type === 'BUY' ? 'signal-buy' : 'signal-sell';
+                    
+                    row.innerHTML = `
+                        <td>${new Date(signal.timestamp).toLocaleTimeString()}</td>
+                        <td>${signal.type} ${signal.strength}</td>
+                        <td>${signal.price.toFixed(6)}</td>
+                        <td>${signal.confidence.toFixed(1)}%</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            }
+
+            addSignalToChart(signal) {
+                if (!this.chart) return;
+                
+                const datasetIndex = signal.type === 'BUY' ? 6 : 7; // Buy or sell signals dataset
+                const dataset = this.chart.data.datasets[datasetIndex];
+                
+                dataset.data.push({
+                    x: new Date(signal.timestamp),
+                    y: signal.price
+                });
+                
+                // Keep only last 50 signals on chart
+                if (dataset.data.length > 50) {
+                    dataset.data.shift();
+                }
+                
+                this.chart.update('none');
+            }
+
+            updateChart() {
+                if (!this.chart || this.priceHistory.length === 0) return;
+                
+                // Update price data
+                this.chart.data.labels = this.priceHistory.map(p => p.x);
+                this.chart.data.datasets[0].data = this.priceHistory;
+                
+                this.chart.update('none');
+            }
+
+            updateChartIndicators() {
+                if (!this.chart || !this.technicalIndicators.ema20) return;
+                
+                // Update EMA lines
+                const ema20Data = this.priceHistory.map(p => ({
+                    x: p.x,
+                    y: this.technicalIndicators.ema20
+                }));
+                
+                const ema50Data = this.priceHistory.map(p => ({
+                    x: p.x,
+                    y: this.technicalIndicators.ema50
+                }));
+                
+                const bbUpperData = this.priceHistory.map(p => ({
+                    x: p.x,
+                    y: this.technicalIndicators.bb_upper
+                }));
+                
+                const bbLowerData = this.priceHistory.map(p => ({
+                    x: p.x,
+                    y: this.technicalIndicators.bb_lower
+                }));
+                
+                this.chart.data.datasets[1].data = ema20Data.slice(-100);
+                this.chart.data.datasets[2].data = ema50Data.slice(-100);
+                this.chart.data.datasets[3].data = bbUpperData.slice(-100);
+                this.chart.data.datasets[4].data = bbLowerData.slice(-100);
+            }
+
+            updatePredictionsChart() {
+                if (!this.chart || !this.predictions.ensemble) return;
+                
+                const currentPrice = this.currentPrice;
+                const prediction = this.predictions.ensemble;
+                const predictedPrice = currentPrice * (1 + prediction);
+                
+                const predictionData = [{
+                    x: new Date(),
+                    y: currentPrice
+                }, {
+                    x: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes ahead
+                    y: predictedPrice
+                }];
+                
+                this.chart.data.datasets[5].data = predictionData;
+                this.chart.update('none');
+            }
+
+            async trainModels() {
+                if (this.klineData.length < this.sequenceLength * 2) {
+                    alert('Not enough data for training. Need at least ' + (this.sequenceLength * 2) + ' data points.');
+                    return;
+                }
+                
+                console.log('Starting model training...');
+                this.updateStatus('training-status', 'training');
+                
+                try {
+                    const trainData = this.prepareTrainingData();
+                    if (!trainData) {
+                        console.error('Failed to prepare training data');
+                        return;
+                    }
+                    
+                    const { features, labels } = trainData;
+                    
+                    // Train each enabled model
+                    for (const modelName of Object.keys(this.models)) {
+                        if (modelName === 'ensemble' || !this.modelConfigs[modelName].enabled) continue;
+                        
+                        console.log(`Training ${modelName}...`);
+                        await this.trainModel(modelName, features, labels);
+                        
+                        // Update progress
+                        const progress = ((Object.keys(this.models).indexOf(modelName) + 1) / (Object.keys(this.models).length - 1)) * 100;
+                        document.getElementById('training-progress').style.width = `${progress}%`;
+                        document.getElementById('training-progress-text').textContent = `${progress.toFixed(0)}%`;
+                    }
+                    
+                    console.log('Model training completed');
+                    this.updateStatus('training-status', 'connected');
+                    
+                    // Clean up tensors
+                    features.dispose();
+                    labels.dispose();
+                    
+                } catch (error) {
+                    console.error('Error training models:', error);
+                    this.updateStatus('training-status', 'disconnected');
+                }
+            }
+
+            prepareTrainingData() {
+                const windowSize = this.sequenceLength;
+                const dataLength = this.klineData.length;
+                
+                if (dataLength < windowSize + 1) return null;
+                
+                const featuresArray = [];
+                const labelsArray = [];
+                
+                for (let i = 0; i < dataLength - windowSize; i++) {
+                    const window = this.klineData.slice(i, i + windowSize);
+                    const nextCandle = this.klineData[i + windowSize];
+                    
+                    // Prepare features for this window
+                    const windowFeatures = [];
+                    
+                    for (let j = 0; j < window.length; j++) {
+                        const candle = window[j];
+                        const features = this.extractCandleFeatures(candle, window[0]);
+                        windowFeatures.push(features);
+                    }
+                    
+                    // Calculate label (next candle return)
+                    const currentPrice = window[window.length - 1].close;
+                    const nextPrice = nextCandle.close;
+                    const return_ = (nextPrice - currentPrice) / currentPrice;
+                    
+                    featuresArray.push(windowFeatures);
+                    labelsArray.push([return_]);
+                }
+                
+                return {
+                    features: tf.tensor3d(featuresArray),
+                    labels: tf.tensor2d(labelsArray)
+                };
+            }
+
+            extractCandleFeatures(candle, baseCandle) {
+                const features = [];
+                
+                // Price features (normalized)
+                const basePrice = baseCandle.close;
+                features.push((candle.open - basePrice) / basePrice);
+                features.push((candle.high - basePrice) / basePrice);
+                features.push((candle.low - basePrice) / basePrice);
+                features.push((candle.close - basePrice) / basePrice);
+                
+                // Volume features
+                const baseVolume = baseCandle.volume;
+                features.push(baseVolume > 0 ? candle.volume / baseVolume : 0);
+                
+                // Add other features with defaults
+                features.push(...new Array(45).fill(0)); // Pad to 50 features
+                
+                return features;
+            }
+
+            async trainModel(modelName, features, labels) {
+                const model = this.models[modelName];
+                
+                try {
+                    let trainFeatures = features;
+                    
+                    // Reshape for non-sequential models
+                    if (modelName === 'linear' || modelName === 'mlp') {
+                        trainFeatures = features.reshape([-1, features.shape[1] * features.shape[2]]);
+                    }
+                    
+                    await model.fit(trainFeatures, labels, {
+                        epochs: 50,
+                        batchSize: 32,
+                        validationSplit: 0.2,
+                        shuffle: true,
+                        verbose: 0,
+                        callbacks: {
+                            onEpochEnd: (epoch, logs) => {
+                                if (epoch % 10 === 0) {
+                                    console.log(`${modelName} - Epoch ${epoch}: loss = ${logs.loss.toFixed(6)}`);
+                                }
+                            }
+                        }
+                    });
+                    
+                    console.log(`${modelName} training completed`);
+                    
+                } catch (error) {
+                    console.error(`Error training ${modelName}:`, error);
+                }
+            }
+
+            startTrading() {
+                this.isRunning = true;
+                console.log('Trading started');
+                
+                document.getElementById('start-trading').classList.add('active');
+                document.getElementById('stop-trading').classList.remove('active');
+                
+                this.updateStatus('data-status', 'connected');
+            }
+
+            stopTrading() {
+                this.isRunning = false;
+                console.log('Trading stopped');
+                
+                document.getElementById('start-trading').classList.remove('active');
+                document.getElementById('stop-trading').classList.add('active');
+                
+                this.updateStatus('data-status', 'disconnected');
+            }
+
+            refreshData() {
+                console.log('Refreshing data...');
+                
+                // Clear existing data
+                this.klineData = [];
+                this.priceHistory = [];
+                this.tickData = [];
+                this.orderbookData = [];
+                
+                // Reconnect WebSocket
+                if (this.binanceWS) {
+                    this.binanceWS.close();
+                }
+                
+                setTimeout(() => {
+                    this.connectBinanceWebSocket();
+                }, 1000);
+            }
+
+            changeTimeframe(timeframe) {
+                console.log(`Changing timeframe to ${timeframe}`);
+                // In real implementation, would fetch new data for the timeframe
+                this.refreshData();
+            }
+
+            toggleIndicators() {
+                const datasets = this.chart.data.datasets;
+                const indicatorDatasets = [1, 2, 3, 4]; // EMA20, EMA50, BB Upper, BB Lower
+                
+                indicatorDatasets.forEach(index => {
+                    const meta = this.chart.getDatasetMeta(index);
+                    meta.hidden = !meta.hidden;
+                });
+                
+                this.chart.update();
+            }
+
+            toggleSignals() {
+                const datasets = this.chart.data.datasets;
+                const signalDatasets = [6, 7]; // Buy and sell signals
+                
+                signalDatasets.forEach(index => {
+                    const meta = this.chart.getDatasetMeta(index);
+                    meta.hidden = !meta.hidden;
+                });
+                
+                this.chart.update();
+            }
+
+            togglePredictions() {
+                const meta = this.chart.getDatasetMeta(5); // Predictions dataset
+                meta.hidden = !meta.hidden;
+                this.chart.update();
+            }
+
+            updateModelWeights() {
+                // Recalculate ensemble weights based on enabled models
+                let totalWeight = 0;
+                const enabledModels = Object.entries(this.modelConfigs).filter(([name, config]) => 
+                    config.enabled && name !== 'ensemble'
+                );
+                
+                enabledModels.forEach(([name, config]) => {
+                    totalWeight += config.weight;
+                });
+                
+                // Normalize weights
+                if (totalWeight > 0) {
+                    enabledModels.forEach(([name, config]) => {
+                        config.weight = config.weight / totalWeight;
+                    });
+                }
+            }
+
+            attemptReconnect() {
+                if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                    console.log('Max reconnection attempts reached');
+                    return;
+                }
+                
+                this.reconnectAttempts++;
+                console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                
+                setTimeout(() => {
+                    this.connectBinanceWebSocket();
+                }, 5000 * this.reconnectAttempts); // Exponential backoff
+            }
+
+            updateStatus(elementId, status) {
+                const element = document.getElementById(elementId);
+                element.className = `status-dot status-${status}`;
+            }
+
+            formatLargeNumber(num) {
+                const absNum = Math.abs(num);
+                
+                if (absNum >= 1e9) {
+                    return (num / 1e9).toFixed(1) + 'B';
+                } else if (absNum >= 1e6) {
+                    return (num / 1e6).toFixed(1) + 'M';
+                } else if (absNum >= 1e3) {
+                    return (num / 1e3).toFixed(1) + 'K';
+                } else {
+                    return num.toFixed(2);
+                }
+            }
+        }
+
+        // Initialize the WIF Predictor when page loads
+        window.addEventListener('load', () => {
+            window.wifPredictor = new WIFPredictor();
+        });
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('Page hidden - reducing update frequency');
+            } else {
+                console.log('Page visible - resuming normal updates');
+            }
+        });
+        
+        // Performance monitoring
+        setInterval(() => {
+            const memInfo = performance.memory;
+            if (memInfo && memInfo.usedJSHeapSize > 100 * 1024 * 1024) { // 100MB
+                console.warn('High memory usage detected:', memInfo.usedJSHeapSize / 1024 / 1024, 'MB');
+            }
+        }, 60000);
+    </script>
 </body>
 </html>
