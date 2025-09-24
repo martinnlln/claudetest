@@ -2,507 +2,478 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WIF/USDT All-in-One Price Predictor</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-
+    <title>WIF/USDT Price Predictor</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #1a1a1a;
-            color: #f0f0f0;
-            margin: 0;
-            padding: 20px;
-        }
-        h1, h3 {
-            text-align: center;
-            color: #E6A400;
-        }
-        .main-container {
-            display: flex;
-            flex-direction: row;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        #controls {
-            background-color: #2b2b2b;
-            padding: 20px;
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        #controls label {
-            display: block;
-            cursor: pointer;
-        }
-        #controls button {
-            background-color: #E6A400;
-            color: #131722;
-            border: none;
-            padding: 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        #controls button:hover {
-            background-color: #ffc107;
-        }
-        #chart-container {
-            flex-grow: 1;
-            max-width: 1200px;
-            border: 1px solid #333;
-        }
-        #trade-log {
-            max-width: 1300px;
-            margin: 20px auto;
-            background-color: #2b2b2b;
-            padding: 20px;
-            border-radius: 8px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            border: 1px solid #444;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #333;
-        }
-        .buy { color: #26a69a; font-weight: bold; }
-        .sell { color: #ef5350; font-weight: bold; }
+        body { font-family: Arial; }
+        #chart { width: 100%; height: 600px; }
+        #toggles { margin: 10px; }
+        #trades-table { margin: 10px; border-collapse: collapse; }
+        #trades-table th, td { border: 1px solid #ddd; padding: 8px; }
+        #metrics { margin: 10px; }
     </style>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://unpkg.com/technicalindicators/dist/browser.es6.min.js"></script>
 </head>
 <body>
-
-    <h1>WIF/USDT Browser ML Price-Predictor</h1>
-
-    <div class="main-container">
-        <div id="controls">
-            <h3>Controls</h3>
-            <label><input type="checkbox" id="toggle-rsi" checked> RSI (14)</label>
-            <label><input type="checkbox" id="toggle-bbands"> Bollinger Bands (20, 2)</label>
-            <hr>
-            <h3>Models</h3>
-            <label><input type="checkbox" id="toggle-mlp-signal" checked> Show MLP Signals</label>
-            <hr>
-            <button id="run-backtest">Run Backtest (Console)</button>
-        </div>
-
-        <div id="chart-container"></div>
+    <div id="chart"></div>
+    <div id="toggles">
+        <label><input type="checkbox" id="toggle-ema" checked> EMA</label>
+        <label><input type="checkbox" id="toggle-sma" checked> SMA</label>
+        <label><input type="checkbox" id="toggle-macd" checked> MACD</label>
+        <label><input type="checkbox" id="toggle-rsi" checked> RSI</label>
+        <label><input type="checkbox" id="toggle-atr" checked> ATR</label>
+        <label><input type="checkbox" id="toggle-bollinger" checked> Bollinger Bands</label>
+        <label><input type="checkbox" id="toggle-vwap" checked> VWAP</label>
+        <label><input type="checkbox" id="toggle-obv" checked> OBV</label>
+        <label><input type="checkbox" id="toggle-chaikin" checked> Chaikin</label>
+        <label><input type="checkbox" id="toggle-models" checked> Model Predictions</label>
     </div>
+    <table id="trades-table">
+        <thead><tr><th>Time</th><th>Entry Price</th><th>Exit Price</th><th>Direction</th><th>Profit/Loss</th><th>Setup</th></tr></thead>
+        <tbody></tbody>
+    </table>
+    <div id="metrics"></div>
 
-    <div id="trade-log">
-        <h3>Live Trade Signals Log</h3>
-        <table id="trade-table">
-            <thead>
-                <tr>
-                    <th>Timestamp</th>
-                    <th>Type</th>
-                    <th>Price</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>
-                </tbody>
-        </table>
-    </div>
+    <script>
+        const SYMBOL = 'WIFUSDT';
+        const TOKEN_MINT = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm';
+        const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
+        const PROXY_URL = 'http://localhost:3000/proxy/'; // Setup Node.js proxy with API keys
 
-<script>
-// ===================================================================================
-// --- All JavaScript Logic Contained in this Single Script Block ---
-// ===================================================================================
+        let chart, candleSeries;
+        let indicatorSeries = {};
+        let data = []; // {time, open, high, low, close, volume}
+        let features = []; // Array of feature objects
+        let models = {};
+        let signals = [];
+        let trades = [];
+        let metrics = { mse: 0, mae: 0, accuracy: 0, sharpe: 0, drawdown: 0 };
 
-// --- !!! DANGEROUS !!! ---
-// Storing API keys here is a major security risk. They will be stolen if you deploy this.
-// For local testing only. Replace with your actual keys.
-const INSECURE_API_KEYS = {
-    WHALE_ALERT_API_KEY: 'YOUR_WHALE_ALERT_API_KEY_HERE',
-    BITQUERY_API_KEY: 'YOUR_BITQUERY_API_KEY_HERE'
-};
-
-
-// ===================================================================================
-// --- MODULE 1: API (Data Fetching) ---
-// ===================================================================================
-const API = {
-    /**
-     * Fetches historical k-line (candlestick) data from Binance. Public API, no key needed.
-     */
-    async getBinanceKlines(symbol = 'WIFUSDT', interval = '5m', limit = 1000) {
-        const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-        try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Binance API error: ${response.statusText}`);
-            const data = await response.json();
-            return data.map(k => ({
-                time: k[0] / 1000,
-                open: parseFloat(k[1]),
-                high: parseFloat(k[2]),
-                low: parseFloat(k[3]),
-                close: parseFloat(k[4]),
-                volume: parseFloat(k[5])
-            }));
-        } catch (error) {
-            console.error("Failed to fetch Binance klines:", error);
-            return [];
+        async function init() {
+            chart = LightweightCharts.createChart(document.getElementById('chart'), { width: window.innerWidth, height: 600 });
+            candleSeries = chart.addCandlestickSeries();
+            setupToggles();
+            await loadModels();
+            connectWebSocket();
+            await fetchHistorical();
+            engineerFeatures();
+            await trainModels();
+            backtest();
+            updateChart();
+            updateMetrics();
+            setInterval(updateData, 60000);
+            setInterval(predictAndSignal, 60000);
         }
-    },
 
-    /**
-     * Fetches whale alert data. REQUIRES a secure backend in production.
-     */
-    async getWhaleAlerts() {
-        if (INSECURE_API_KEYS.WHALE_ALERT_API_KEY === 'YOUR_WHALE_ALERT_API_KEY_HERE') return null;
-        const url = `https://api.whale-alert.io/v1/transactions?api_key=${INSECURE_API_KEYS.WHALE_ALERT_API_KEY}&currency=wif&min_value=500000`;
-        try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Whale Alert API error');
-            return await response.json();
-        } catch (error) {
-            console.error("Failed to fetch whale alerts:", error);
-            return null;
+        function setupToggles() {
+            ['ema', 'sma', 'macd', 'rsi', 'atr', 'bollinger', 'vwap', 'obv', 'chaikin', 'models'].forEach(id => {
+                document.getElementById(`toggle-${id}`).addEventListener('change', updateChart);
+            });
         }
-    }
-};
 
+        async function fetchHistorical() {
+            const klines = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=1m&limit=1000`).then(res => res.json());
+            data = klines.map(k => ({ time: Math.floor(k[0]/1000), open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
+            candleSeries.setData(data);
+        }
 
-// ===================================================================================
-// --- MODULE 2: FEATURES (Indicator Calculations) ---
-// ===================================================================================
-const Features = {
-    /**
-     * Calculates Simple Moving Average (SMA).
-     */
-    calculateSMA(data, period) {
-        let sma = [];
-        for (let i = 0; i < data.length; i++) {
-            if (i >= period - 1) {
-                const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
-                sma.push({ time: data[i].time, value: sum / period });
-            } else {
-                sma.push({ time: data[i].time, value: undefined });
+        function connectWebSocket() {
+            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@kline_1m`);
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.k) {
+                    const k = msg.k;
+                    const candle = { time: Math.floor(k.t/1000), open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c), volume: parseFloat(k.v) };
+                    const last = data[data.length - 1];
+                    if (candle.time === last.time) {
+                        data[data.length - 1] = candle;
+                        candleSeries.update(candle);
+                    } else {
+                        data.push(candle);
+                        candleSeries.update(candle);
+                    }
+                    engineerFeatures();
+                    updateChart();
+                }
+            };
+        }
+
+        async function updateData() {
+            const depth = await fetch(`https://api.binance.com/api/v3/depth?symbol=${SYMBOL}&limit=100`).then(res => res.json());
+            const tradesRecent = await fetch(`https://api.binance.com/api/v3/trades?symbol=${SYMBOL}&limit=1000`).then(res => res.json());
+            const coingecko = await fetch('https://api.coingecko.com/api/v3/coins/dogwifhat/market_chart?vs_currency=usd&days=1&interval=minute').then(res => res.json());
+
+            const whales = await fetch(`${PROXY_URL}whale-alert?blockchain=solana&symbols=WIF&min_value_usd=100000`).then(res => res.json() || {transactions: []});
+
+            const holdersRes = await fetch(SOLANA_RPC, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenLargestAccounts', params: [TOKEN_MINT, {commitment: 'finalized'}] })
+            }).then(res => res.json());
+            const holders = holdersRes.result ? holdersRes.result.value : [];
+
+            const reddit = await fetch('https://www.reddit.com/search.json?q=WIF%20cryptocurrency&sort=new&limit=100').then(res => res.json() || {data: {children: []}});
+
+            const trends = await fetch(`${PROXY_URL}google-trends?keywords=dogwifhat`).then(res => res.json() || {interest_over_time: {timeline_data: [{values: [0]}]}});
+
+            const latestFeature = {
+                bidAskSpread: parseFloat(depth.asks[0][0]) - parseFloat(depth.bids[0][0]),
+                depthImbalance: calculateDepthImbalance(depth),
+                tradeImbalance: calculateTradeImbalance(tradesRecent),
+                timeBetweenTrades: calculateTimeBetweenTrades(tradesRecent),
+                exchangeInflow: calculateExchangeInflow(whales.transactions),
+                exchangeOutflow: calculateExchangeOutflow(whales.transactions),
+                topHolderConcentration: calculateTopHolderConcentration(holders),
+                tokenVelocity: calculateTokenVelocity(whales.transactions),
+                mintBurn: calculateMintBurn(whales.transactions),
+                lpEvents: calculateLpEvents(whales.transactions),
+                socialSentiment: analyzeSocialSentiment(reddit.data.children),
+                trendsScore: trends.interest_over_time.timeline_data.length > 0 ? trends.interest_over_time.timeline_data[0].values[0] : 0
+            };
+
+            latestFeature.whalePressure = calculateWhalePressure(latestFeature);
+            latestFeature.liquidityAlarm = calculateLiquidityAlarm(latestFeature);
+            latestFeature.holderCohortMomentum = calculateHolderCohortMomentum(holders);
+            latestFeature.memeMomentum = calculateMemeMomentum(latestFeature);
+
+            features.push(latestFeature);
+        }
+
+        function engineerFeatures() {
+            const TI = technicalindicators;
+            const closes = data.map(d => d.close);
+            const highs = data.map(d => d.high);
+            const lows = data.map(d => d.low);
+            const volumes = data.map(d => d.volume);
+            const period14 = 14;
+            const period20 = 20;
+            const period12 = 12;
+            const period26 = 26;
+            const period9 = 9;
+            const period21 = 21;
+
+            indicatorSeries.ema = new TI.EMA({ period: period12, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.sma = new TI.SMA({ period: period20, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.macd = new TI.MACD({ values: closes, fastPeriod: period12, slowPeriod: period26, signalPeriod: period9 }).result.map((v, i) => ({ time: data[i].time, MACD: v.MACD, signal: v.signal, histogram: v.histogram }));
+            indicatorSeries.rsi = new TI.RSI({ period: period14, values: closes }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.atr = new TI.ATR({ high: highs, low: lows, close: closes, period: period14 }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.bollinger = new TI.BollingerBands({ period: period20, stdDev: 2, values: closes }).result.map((v, i) => ({ time: data[i].time, middle: v.middle, upper: v.upper, lower: v.lower }));
+            indicatorSeries.vwap = calculateVWAP(highs, lows, closes, volumes).map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.obv = new TI.OBV({ close: closes, volume: volumes }).result.map((v, i) => ({ time: data[i].time, value: v }));
+            indicatorSeries.chaikin = new TI.ChaikinMoneyFlow({ high: highs, low: lows, close: closes, volume: volumes, period: period21 }).result.map((v, i) => ({ time: data[i].time, value: v }));
+        }
+
+        function calculateVWAP(highs, lows, closes, volumes) {
+            let vwap = [];
+            let cumVolume = 0;
+            let cumTypicalVolume = 0;
+            for (let i = 0; i < closes.length; i++) {
+                const typical = (highs[i] + lows[i] + closes[i]) / 3;
+                cumTypicalVolume += typical * volumes[i];
+                cumVolume += volumes[i];
+                vwap.push(cumTypicalVolume / cumVolume);
+            }
+            return vwap;
+        }
+
+        async function loadModels() {
+            const featureDim = 20; // Count of features in latestFeature
+            const timeSteps = 60;
+
+            models.linear = tf.sequential();
+            models.linear.add(tf.layers.dense({ units: 1, inputShape: [featureDim] }));
+            models.linear.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+
+            models.mlp = tf.sequential();
+            models.mlp.add(tf.layers.dense({ units: 128, activation: 'relu', inputShape: [featureDim] }));
+            models.mlp.add(tf.layers.dense({ units: 64, activation: 'relu' }));
+            models.mlp.add(tf.layers.dense({ units: 1 }));
+            models.mlp.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.lstm = tf.sequential();
+            models.lstm.add(tf.layers.lstm({ units: 64, returnSequences: true, inputShape: [timeSteps, featureDim] }));
+            models.lstm.add(tf.layers.lstm({ units: 32 }));
+            models.lstm.add(tf.layers.dense({ units: 1 }));
+            models.lstm.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.gru = tf.sequential();
+            models.gru.add(tf.layers.gru({ units: 64, returnSequences: true, inputShape: [timeSteps, featureDim] }));
+            models.gru.add(tf.layers.gru({ units: 32 }));
+            models.gru.add(tf.layers.dense({ units: 1 }));
+            models.gru.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.cnn = tf.sequential();
+            models.cnn.add(tf.layers.conv1d({ filters: 32, kernelSize: 5, activation: 'relu', inputShape: [timeSteps, featureDim] }));
+            models.cnn.add(tf.layers.maxPooling1d({ poolSize: 2 }));
+            models.cnn.add(tf.layers.flatten());
+            models.cnn.add(tf.layers.dense({ units: 1 }));
+            models.cnn.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.transformer = buildTransformerModel(timeSteps, featureDim);
+            models.transformer.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.autoencoder = buildAutoencoder(featureDim);
+            models.autoencoder.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+
+            models.ensemble = { predict: async (x) => {
+                const preds = await Promise.all([models.linear, models.mlp, models.lstm, models.gru, models.cnn, models.transformer].map(m => m.predict(x)));
+                return tf.mean(tf.stack(preds), 0);
+            }};
+        }
+
+        function buildTransformerModel(timeSteps, featureDim) {
+            const input = tf.input({ shape: [timeSteps, featureDim] });
+            let x = tf.layers.multiHeadAttention({ numHeads: 4, keyDim: 64 }).apply([input, input]);
+            x = tf.layers.layerNormalization().apply(x);
+            x = tf.layers.dense({ units: featureDim, activation: 'relu' }).apply(x);
+            x = tf.layers.globalAveragePooling1d().apply(x);
+            const output = tf.layers.dense({ units: 1 }).apply(x);
+            return tf.model({ inputs: input, outputs: output });
+        }
+
+        function buildAutoencoder(featureDim) {
+            const input = tf.input({ shape: [featureDim] });
+            let x = tf.layers.dense({ units: 32, activation: 'relu' }).apply(input);
+            x = tf.layers.dense({ units: 16, activation: 'relu' }).apply(x);
+            x = tf.layers.dense({ units: 32, activation: 'relu' }).apply(x);
+            const output = tf.layers.dense({ units: featureDim }).apply(x);
+            return tf.model({ inputs: input, outputs: output });
+        }
+
+        async function trainModels() {
+            const timeSteps = 60;
+            const xs = [];
+            const ys = [];
+            const featureKeys = Object.keys(features[0] || {});
+            for (let i = timeSteps; i < features.length; i++) {
+                const window = features.slice(i - timeSteps, i).map(f => featureKeys.map(k => f[k] || 0));
+                xs.push(window);
+                ys.push(data[i].close - data[i - 1].close);
+            }
+            if (xs.length === 0) return;
+            const xsTensor = tf.tensor3d(xs);
+            const ysTensor = tf.tensor1d(ys);
+            const xs2d = tf.reshape(xsTensor, [-1, featureKeys.length]);
+            const ys2d = tf.reshape(ysTensor, [-1, 1]);
+
+            await models.linear.fit(xs2d, ysTensor, { epochs: 20 });
+            await models.mlp.fit(xs2d, ysTensor, { epochs: 20 });
+            await models.lstm.fit(xsTensor, ysTensor, { epochs: 20 });
+            await models.gru.fit(xsTensor, ysTensor, { epochs: 20 });
+            await models.cnn.fit(xsTensor, ysTensor, { epochs: 20 });
+            await models.transformer.fit(xsTensor, ysTensor, { epochs: 20 });
+            await models.autoencoder.fit(xs2d, xs2d, { epochs: 20 });
+        }
+
+        function backtest() {
+            const timeSteps = 60;
+            const slippage = 0.001;
+            const fee = 0.0005;
+            let portfolio = 10000;
+            let position = 0;
+            let returns = [];
+            let peak = portfolio;
+            let preds = [];
+            let actuals = [];
+            for (let i = timeSteps; i < data.length; i++) {
+                const window = tf.tensor3d([features.slice(i - timeSteps, i).map(f => Object.values(f))]);
+                const pred = models.ensemble.predict(window).dataSync()[0];
+                const actual = data[i].close - data[i - 1].close;
+                preds.push(pred);
+                actuals.push(actual);
+                const signal = pred > 0 ? 1 : -1;
+                if (signal > 0 && position <= 0) {
+                    position = portfolio / data[i].close * (1 - fee - slippage);
+                    portfolio = 0;
+                    trades.push({ time: data[i].time * 1000, entry: data[i].close, direction: 'buy', setup: 'Ensemble signal positive' });
+                } else if (signal < 0 && position > 0) {
+                    portfolio = position * data[i].close * (1 - fee - slippage);
+                    position = 0;
+                    const lastTrade = trades[trades.length - 1];
+                    lastTrade.exit = data[i].close;
+                    lastTrade.pnl = (lastTrade.exit - lastTrade.entry) / lastTrade.entry * 100;
+                    returns.push(lastTrade.pnl / 100);
+                }
+                peak = Math.max(peak, portfolio + position * data[i].close);
+            }
+            const meanRet = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const stdRet = Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - meanRet, 2), 0) / returns.length);
+            metrics.sharpe = meanRet / stdRet * Math.sqrt(252 * 1440); // Annualized
+            metrics.drawdown = (peak - portfolio) / peak * 100;
+            metrics.mse = preds.reduce((a, b, i) => a + Math.pow(b - actuals[i], 2), 0) / preds.length;
+            metrics.mae = preds.reduce((a, b, i) => a + Math.abs(b - actuals[i]), 0) / preds.length;
+            metrics.accuracy = preds.filter((p, i) => Math.sign(p) === Math.sign(actuals[i])).length / preds.length * 100;
+            updateTable();
+            updateMetrics();
+        }
+
+        async function predictAndSignal() {
+            if (features.length < 60) return;
+            const window = tf.tensor3d([features.slice(-60).map(f => Object.values(f))]);
+            const pred = (await models.ensemble.predict(window)).dataSync()[0];
+            const anomaly = detectAnomaly(window);
+            if (anomaly) return; // Skip if anomaly
+            const direction = pred > 0 ? 'buy' : 'sell';
+            signals.push({ time: data[data.length - 1].time, type: direction, price: data[data.length - 1].close });
+            executeTrade(direction, pred);
+            updateChart();
+        }
+
+        function detectAnomaly(x) {
+            const recon = models.autoencoder.predict(tf.reshape(x, [1, Object.keys(features[0]).length]));
+            const error = tf.mean(tf.square(tf.sub(x, recon))).dataSync()[0];
+            return error > 0.1; // Threshold
+        }
+
+        function executeTrade(direction, pred) {
+            const entry = data[data.length - 1].close;
+            trades.push({ time: Date.now(), entry, direction, setup: `Ensemble pred: ${pred.toFixed(4)}`, exit: null, pnl: null });
+            // In real, integrate with exchange API; here simulate hold 5min
+            setTimeout(() => {
+                const current = data[data.length - 1].close;
+                const lastTrade = trades[trades.length - 1];
+                lastTrade.exit = current;
+                lastTrade.pnl = (direction === 'buy' ? (current - entry) : (entry - current)) / entry * 100;
+                updateTable();
+            }, 300000);
+        }
+
+        function updateChart() {
+            Object.values(indicatorSeries).forEach(series => {
+                if (Array.isArray(series)) series.forEach(s => chart.removeSeries(s));
+                else chart.removeSeries(series);
+            });
+            indicatorSeries = {};
+
+            if (document.getElementById('toggle-ema').checked) {
+                indicatorSeries.ema = chart.addLineSeries({ color: 'blue' });
+                indicatorSeries.ema.setData(indicatorSeries.ema);
+            }
+            if (document.getElementById('toggle-sma').checked) {
+                indicatorSeries.sma = chart.addLineSeries({ color: 'green' });
+                indicatorSeries.sma.setData(indicatorSeries.sma);
+            }
+            if (document.getElementById('toggle-macd').checked) {
+                indicatorSeries.macdLine = chart.addLineSeries({ color: 'red' });
+                indicatorSeries.macdLine.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.MACD })));
+                indicatorSeries.signalLine = chart.addLineSeries({ color: 'orange' });
+                indicatorSeries.signalLine.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.signal })));
+                indicatorSeries.histogram = chart.addHistogramSeries({ color: 'purple' });
+                indicatorSeries.histogram.setData(indicatorSeries.macd.map(v => ({ time: v.time, value: v.histogram })));
+            }
+            if (document.getElementById('toggle-rsi').checked) {
+                indicatorSeries.rsi = chart.addLineSeries({ color: 'cyan' });
+                indicatorSeries.rsi.setData(indicatorSeries.rsi);
+            }
+            if (document.getElementById('toggle-atr').checked) {
+                indicatorSeries.atr = chart.addLineSeries({ color: 'magenta' });
+                indicatorSeries.atr.setData(indicatorSeries.atr);
+            }
+            if (document.getElementById('toggle-bollinger').checked) {
+                indicatorSeries.bolMiddle = chart.addLineSeries({ color: 'black' });
+                indicatorSeries.bolMiddle.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.middle })));
+                indicatorSeries.bolUpper = chart.addLineSeries({ color: 'gray' });
+                indicatorSeries.bolUpper.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.upper })));
+                indicatorSeries.bolLower = chart.addLineSeries({ color: 'gray' });
+                indicatorSeries.bolLower.setData(indicatorSeries.bollinger.map(v => ({ time: v.time, value: v.lower })));
+            }
+            if (document.getElementById('toggle-vwap').checked) {
+                indicatorSeries.vwap = chart.addLineSeries({ color: 'brown' });
+                indicatorSeries.vwap.setData(indicatorSeries.vwap);
+            }
+            if (document.getElementById('toggle-obv').checked) {
+                indicatorSeries.obv = chart.addLineSeries({ color: 'pink' });
+                indicatorSeries.obv.setData(indicatorSeries.obv);
+            }
+            if (document.getElementById('toggle-chaikin').checked) {
+                indicatorSeries.chaikin = chart.addLineSeries({ color: 'lime' });
+                indicatorSeries.chaikin.setData(indicatorSeries.chaikin);
+            }
+            if (document.getElementById('toggle-models').checked) {
+                // Predictions as markers
+                candleSeries.setMarkers(signals.map(s => ({ time: s.time, position: s.type === 'buy' ? 'belowBar' : 'aboveBar', color: s.type === 'buy' ? '#00FF00' : '#FF0000', shape: 'circle', text: s.type })));
             }
         }
-        return sma;
-    },
 
-    /**
-     * Calculates Bollinger Bands (BBands).
-     */
-    calculateBollingerBands(data, period = 20, stdDev = 2) {
-        let bbands = [];
-        for (let i = 0; i < data.length; i++) {
-            if (i >= period - 1) {
-                const slice = data.slice(i - period + 1, i + 1);
-                const sma = slice.reduce((a, b) => a + b.close, 0) / period;
-                const variance = slice.reduce((a, b) => a + Math.pow(b.close - sma, 2), 0) / period;
-                const deviation = Math.sqrt(variance);
-                bbands.push({
-                    time: data[i].time,
-                    upper: sma + stdDev * deviation,
-                    middle: sma,
-                    lower: sma - stdDev * deviation
-                });
-            } else {
-                bbands.push({ time: data[i].time, upper: undefined, middle: undefined, lower: undefined });
-            }
-        }
-        return bbands;
-    },
-
-    /**
-     * Calculates Relative Strength Index (RSI).
-     */
-    calculateRSI(data, period = 14) {
-        let rsi = [];
-        let avgGain = 0, avgLoss = 0;
-        
-        for (let i = 1; i < data.length; i++) {
-            const change = data[i].close - data[i-1].close;
-            const gain = change > 0 ? change : 0;
-            const loss = change < 0 ? -change : 0;
-
-            if (i < period) {
-                avgGain += gain;
-                avgLoss += loss;
-                rsi.push({ time: data[i].time, value: undefined });
-                continue;
-            }
-            if (i === period) {
-                avgGain = (avgGain + gain) / period;
-                avgLoss = (avgLoss + loss) / period;
-            } else {
-                avgGain = (avgGain * (period - 1) + gain) / period;
-                avgLoss = (avgLoss * (period - 1) + loss) / period;
-            }
-
-            if (avgLoss === 0) {
-                rsi.push({ time: data[i].time, value: 100 });
-            } else {
-                const rs = avgGain / avgLoss;
-                const rsiValue = 100 - (100 / (1 + rs));
-                rsi.push({ time: data[i].time, value: rsiValue });
-            }
-        }
-        rsi.unshift({ time: data[0].time, value: undefined }); // Pad start
-        return rsi;
-    }
-};
-
-
-// ===================================================================================
-// --- MODULE 3: MODELS (TensorFlow.js Logic) ---
-// ===================================================================================
-const ModelHandler = {
-    mlpModel: null,
-
-    /**
-     * Creates a simple Multi-Layer Perceptron (MLP) model.
-     */
-    createMLP(inputShape) {
-        const model = tf.sequential();
-        model.add(tf.layers.dense({ inputShape: [inputShape], units: 50, activation: 'relu' }));
-        model.add(tf.layers.dense({ units: 25, activation: 'relu' }));
-        model.add(tf.layers.dense({ units: 1, activation: 'linear' })); // Predict next price return
-
-        model.compile({ optimizer: tf.train.adam(0.01), loss: 'meanSquaredError' });
-        
-        this.mlpModel = model;
-        console.log("MLP Model Created.", this.mlpModel);
-        return model;
-    },
-    
-    /**
-     * Makes a prediction using the loaded MLP model.
-     */
-    async predict(latestFeatures) {
-        if (!this.mlpModel) return null;
-
-        return tf.tidy(() => {
-            const inputTensor = tf.tensor2d([latestFeatures]);
-            const prediction = this.mlpModel.predict(inputTensor);
-            return prediction.dataSync()[0];
-        });
-    }
-};
-
-
-// ===================================================================================
-// --- MODULE 4: UI (Chart and DOM Management) ---
-// ===================================================================================
-const UI = {
-    chart: null,
-    series: {},
-
-    initChart() {
-        this.chart = LightweightCharts.createChart(document.getElementById('chart-container'), {
-            width: document.getElementById('chart-container').clientWidth,
-            height: 600,
-            layout: { backgroundColor: '#131722', textColor: '#d1d4dc' },
-            grid: { vertLines: { color: '#334158' }, horzLines: { color: '#334158' } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            timeScale: { timeVisible: true, secondsVisible: false },
-        });
-        this.series.candlestick = this.chart.addCandlestickSeries();
-    },
-
-    updateCandlestickData(data) {
-        this.series.candlestick.setData(data);
-    },
-    
-    toggleRSI(data, visible) {
-        if (visible) {
-            if (!this.series.rsi) {
-                this.series.rsi = this.chart.addLineSeries({
-                    color: '#E6A400', lineWidth: 2, priceScaleId: 'rsi',
-                });
-                this.chart.priceScale('rsi').applyOptions({
-                    scaleMargins: { top: 0.8, bottom: 0 }, height: 100
-                });
-            }
-            this.series.rsi.setData(data.filter(d => d.value !== undefined));
-        } else if (this.series.rsi) {
-            this.chart.removeSeries(this.series.rsi);
-            delete this.series.rsi;
-        }
-    },
-    
-    toggleBollingerBands(data, visible) {
-        if (visible) {
-            if (!this.series.bbands_upper) {
-                const options = { color: 'rgba(76, 175, 80, 0.4)', lineWidth: 1, priceLineVisible: false };
-                this.series.bbands_upper = this.chart.addLineSeries(options);
-                this.series.bbands_lower = this.chart.addLineSeries(options);
-                
-                const fill = this.chart.addAreaSeries({
-                    topLineColor: 'rgba(76, 175, 80, 0.4)',
-                    bottomLineColor: 'rgba(76, 175, 80, 0.4)',
-                    topColor: 'rgba(76, 175, 80, 0.1)',
-                    bottomColor: 'rgba(76, 175, 80, 0.1)',
-                    priceLineVisible: false,
-                });
-                
-                const fillData = data.map(d => ({time: d.time, value: d.upper, open: d.lower}));
-                fill.setData(fillData.filter(d => d.value !== undefined));
-                
-                this.series.bbands_fill = fill;
-            }
-            this.series.bbands_upper.setData(data.map(d => ({time: d.time, value: d.upper})).filter(d => d.value !== undefined));
-            this.series.bbands_lower.setData(data.map(d => ({time: d.time, value: d.lower})).filter(d => d.value !== undefined));
-        } else if (this.series.bbands_upper) {
-            this.chart.removeSeries(this.series.bbands_upper);
-            this.chart.removeSeries(this.series.bbands_lower);
-            this.chart.removeSeries(this.series.bbands_fill);
-            delete this.series.bbands_upper;
-            delete this.series.bbands_lower;
-            delete this.series.bbands_fill;
-        }
-    },
-
-    addTradeSignal(time, type, price) {
-        const existingMarkers = this.series.candlestick.markers();
-        const newMarker = {
-            time,
-            position: type === 'buy' ? 'belowBar' : 'aboveBar',
-            color: type === 'buy' ? '#26a69a' : '#ef5350',
-            shape: type === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: type.toUpperCase()
-        };
-        this.series.candlestick.setMarkers([...existingMarkers, newMarker]);
-    },
-    
-    addTradeToLog(trade) {
-        const tableBody = document.querySelector("#trade-table tbody");
-        const row = tableBody.insertRow(0); // Add to top
-        row.innerHTML = `
-            <td>${new Date(trade.time * 1000).toLocaleString()}</td>
-            <td class="${trade.type}">${trade.type.toUpperCase()}</td>
-            <td>${trade.price.toFixed(4)}</td>
-            <td>${trade.reason}</td>
-        `;
-    }
-};
-
-
-// ===================================================================================
-// --- MODULE 5: APP (Main Controller) ---
-// ===================================================================================
-const App = {
-    klines: [],
-    features: {},
-    
-    async init() {
-        console.log("Initializing application...");
-        UI.initChart();
-        
-        await this.loadDataAndFeatures();
-        
-        // Example: Use RSI and the close price's % change as features for the MLP
-        ModelHandler.createMLP(2); // 2 input features
-
-        this.updateUI();
-        this.setupEventListeners();
-
-        // Perform an initial prediction
-        this.runPrediction();
-
-        // Start live update loop
-        setInterval(() => this.liveUpdate(), 60000); // Update every 60 seconds
-    },
-
-    async loadDataAndFeatures() {
-        this.klines = await API.getBinanceKlines();
-        this.features.rsi = Features.calculateRSI(this.klines);
-        this.features.bbands = Features.calculateBollingerBands(this.klines);
-    },
-    
-    async liveUpdate() {
-        console.log("Fetching live data...");
-        const latestKlines = await API.getBinanceKlines('WIFUSDT', '5m', 2);
-        const newCandle = latestKlines[0];
-        const lastKlineInChart = this.klines[this.klines.length - 1];
-
-        if (newCandle.time > lastKlineInChart.time) {
-            this.klines.push(newCandle); // New candle
-            this.klines.shift(); // Keep array size constant
-        } else {
-            this.klines[this.klines.length - 1] = newCandle; // Update current candle
-        }
-        
-        // Recalculate all features
-        this.features.rsi = Features.calculateRSI(this.klines);
-        this.features.bbands = Features.calculateBollingerBands(this.klines);
-        
-        this.updateUI();
-        await this.runPrediction();
-    },
-    
-    async runPrediction() {
-        if (!document.getElementById('toggle-mlp-signal').checked) return;
-        
-        // Prepare the latest features for the model
-        const lastIndex = this.klines.length - 1;
-        const lastRSI = this.features.rsi[lastIndex]?.value;
-        const prevClose = this.klines[lastIndex - 1]?.close;
-        const lastClose = this.klines[lastIndex]?.close;
-        
-        // Check if data is valid
-        if (!lastRSI || !prevClose || !lastClose) {
-            console.log("Not enough data for prediction yet.");
-            return;
+        function updateTable() {
+            const tbody = document.querySelector('#trades-table tbody');
+            tbody.innerHTML = trades.map(t => `<tr><td>${new Date(t.time).toLocaleString()}</td><td>${t.entry.toFixed(4)}</td><td>${t.exit ? t.exit.toFixed(4) : 'Open'}</td><td>${t.direction}</td><td>${t.pnl ? t.pnl.toFixed(2) + '%' : '0%'}</td><td>${t.setup}</td></tr>`).join('');
         }
 
-        const pctChange = (lastClose - prevClose) / prevClose;
-        const featureVector = [lastRSI / 100, pctChange]; // Normalize features
-        
-        const prediction = await ModelHandler.predict(featureVector);
-        if (prediction === null) return;
-        
-        console.log("MLP Predicted Return:", prediction);
-        const signalTime = this.klines[lastIndex].time;
-        
-        // Simple signal logic based on predicted return
-        const threshold = 0.001; // 0.1% predicted move
-        if (prediction > threshold) {
-            UI.addTradeSignal(signalTime, 'buy', lastClose);
-            UI.addTradeToLog({ time: signalTime, type: 'buy', price: lastClose, reason: 'MLP Signal (Pred > 0.1%)' });
-        } else if (prediction < -threshold) {
-            UI.addTradeSignal(signalTime, 'sell', lastClose);
-            UI.addTradeToLog({ time: signalTime, type: 'sell', price: lastClose, reason: 'MLP Signal (Pred < -0.1%)' });
+        function updateMetrics() {
+            document.getElementById('metrics').innerHTML = `MSE: ${metrics.mse.toFixed(4)} | MAE: ${metrics.mae.toFixed(4)} | Accuracy: ${metrics.accuracy.toFixed(2)}% | Sharpe: ${metrics.sharpe.toFixed(2)} | Drawdown: ${metrics.drawdown.toFixed(2)}%`;
         }
-    },
 
-    updateUI() {
-        UI.updateCandlestickData(this.klines);
-        UI.toggleRSI(this.features.rsi, document.getElementById('toggle-rsi').checked);
-        UI.toggleBollingerBands(this.features.bbands, document.getElementById('toggle-bbands').checked);
-    },
-    
-    setupEventListeners() {
-        document.getElementById('toggle-rsi').addEventListener('change', () => this.updateUI());
-        document.getElementById('toggle-bbands').addEventListener('change', () => this.updateUI());
-        
-        // Placeholder for backtesting logic
-        document.getElementById('run-backtest').addEventListener('click', () => {
-             console.log("Backtesting not fully implemented in this single-file example.");
-             alert("Backtesting requires more complex logic. See console for details.");
-        });
-    }
-};
+        // Helper functions
+        function calculateDepthImbalance(depth) {
+            const bidVol = depth.bids.reduce((a, b) => a + parseFloat(b[1]), 0);
+            const askVol = depth.asks.reduce((a, b) => a + parseFloat(b[1]), 0);
+            return (bidVol - askVol) / (bidVol + askVol);
+        }
 
-// --- Entry Point ---
-document.addEventListener('DOMContentLoaded', () => App.init());
+        function calculateTradeImbalance(trades) {
+            const buys = trades.filter(t => !t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
+            const sells = trades.filter(t => t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
+            return (buys - sells) / (buys + sells);
+        }
 
-</script>
+        function calculateTimeBetweenTrades(trades) {
+            if (trades.length < 2) return 0;
+            const times = trades.map(t => t.time);
+            const diffs = times.slice(1).map((t, i) => t - times[i]);
+            return diffs.reduce((a, b) => a + b, 0) / diffs.length / 1000;
+        }
 
+        function calculateExchangeInflow(transactions) {
+            return transactions.filter(t => t.to && t.to.owner_type === 'exchange').reduce((a, t) => a + t.amount_usd, 0);
+        }
+
+        function calculateExchangeOutflow(transactions) {
+            return transactions.filter(t => t.from && t.from.owner_type === 'exchange').reduce((a, t) => a + t.amount_usd, 0);
+        }
+
+        function calculateTopHolderConcentration(holders) {
+            const total = holders.reduce((a, h) => a + h.uiAmount, 0);
+            const top10 = holders.slice(0, 10).reduce((a, h) => a + h.uiAmount, 0);
+            return top10 / total;
+        }
+
+        function calculateTokenVelocity(transactions) {
+            return transactions.length / 60; // Per min approx
+        }
+
+        function calculateMintBurn(transactions) {
+            return transactions.filter(t => t.type === 'mint').length - transactions.filter(t => t.type === 'burn').length;
+        }
+
+        function calculateLpEvents(transactions) {
+            return transactions.filter(t => t.to && t.to.owner === 'liquidity_pool' || t.from && t.from.owner === 'liquidity_pool').length;
+        }
+
+        function analyzeSocialSentiment(posts) {
+            const positive = posts.filter(p => p.data.title.toLowerCase().includes('bullish') || p.data.title.toLowerCase().includes('up')).length;
+            const negative = posts.filter(p => p.data.title.toLowerCase().includes('bearish') || p.data.title.toLowerCase().includes('down')).length;
+            return (positive - negative) / posts.length || 0;
+        }
+
+        function calculateWhalePressure(feature) {
+            return feature.exchangeInflow - feature.exchangeOutflow;
+        }
+
+        function calculateLiquidityAlarm(feature) {
+            return feature.depthImbalance * feature.bidAskSpread;
+        }
+
+        function calculateHolderCohortMomentum(holders) {
+            return holders.length > 0 ? holders[0].uiAmount - holders[holders.length - 1].uiAmount : 0;
+        }
+
+        function calculateMemeMomentum(feature) {
+            return feature.socialSentiment + feature.trendsScore / 100;
+        }
+
+        init();
+    </script>
 </body>
 </html>
