@@ -1,537 +1,663 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Price Prediction Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        /* Reset and Base Styles */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%);
-            color: #e0e1dd;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* Header */
-        header {
-            background: rgba(27, 38, 59, 0.95);
-            backdrop-filter: blur(12px);
-            padding: 1rem 2rem;
-            position: fixed;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-        }
-
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .logo {
-            font-size: 2rem;
-            font-weight: 800;
-            color: #00d4ff;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-        }
-
-        nav ul {
-            display: flex;
-            list-style: none;
-            gap: 2.5rem;
-        }
-
-        nav a {
-            color: #e0e1dd;
-            text-decoration: none;
-            font-size: 1.1rem;
-            font-weight: 500;
-            transition: color 0.3s ease, text-shadow 0.3s ease;
-        }
-
-        nav a:hover {
-            color: #00d4ff;
-            text-shadow: 0 0 15px rgba(0, 212, 255, 0.7);
-        }
-
-        /* Hero Section */
-        .hero {
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            background: radial-gradient(circle at center, rgba(0, 212, 255, 0.25), transparent);
-            padding: 2rem;
-        }
-
-        .hero-content h1 {
-            font-size: 4rem;
-            font-weight: 900;
-            margin-bottom: 1.5rem;
-            background: linear-gradient(45deg, #00d4ff, #ff007a);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-
-        .hero-content p {
-            font-size: 1.4rem;
-            max-width: 700px;
-            margin: 0 auto 2.5rem;
-            line-height: 1.7;
-            color: #b0b8c4;
-        }
-
-        .cta-button {
-            background: #00d4ff;
-            color: #0d1b2a;
-            padding: 1rem 2.5rem;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 1.2rem;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .cta-button:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0, 212, 255, 0.6);
-        }
-
-        /* Dashboard Section */
-        .dashboard {
-            max-width: 1400px;
-            margin: 4rem auto;
-            padding: 2rem;
-        }
-
-        .dashboard h2 {
-            font-size: 3rem;
-            margin-bottom: 2.5rem;
-            text-align: center;
-            color: #00d4ff;
-            text-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
-        }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-        }
-
-        .tab {
-            padding: 0.8rem 1.5rem;
-            background: #1b263b;
-            border-radius: 8px;
-            cursor: pointer;
-            color: #e0e1dd;
-            font-weight: 600;
-            transition: background 0.3s ease, color 0.3s ease;
-        }
-
-        .tab.active, .tab:hover {
-            background: #00d4ff;
-            color: #0d1b2a;
-        }
-
-        /* Input Controls */
-        .controls {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-        }
-
-        input, select {
-            padding: 0.9rem;
-            border-radius: 8px;
-            border: none;
-            background: #1b263b;
-            color: #e0e1dd;
-            font-size: 1rem;
-            width: 220px;
-            transition: box-shadow 0.3s ease;
-        }
-
-        input:focus, select:focus {
-            outline: none;
-            box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
-        }
-
-        button {
-            padding: 0.9rem 2rem;
-            border: none;
-            border-radius: 8px;
-            background: #ff007a;
-            color: #e0e1dd;
-            font-weight: 700;
-            cursor: pointer;
-            transition: background 0.3s ease, transform 0.3s ease;
-        }
-
-        button:hover {
-            background: #d1005e;
-            transform: translateY(-3px);
-        }
-
-        /* Chart Containers */
-        .chart-container {
-            background: rgba(27, 38, 59, 0.85);
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.2);
-        }
-
-        canvas {
-            max-height: 400px;
-        }
-
-        /* News Section */
-        .news-feed {
-            display: grid;
-            gap: 1rem;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        }
-
-        .news-item {
-            background: #1b263b;
-            padding: 1.5rem;
-            border-radius: 8px;
-            transition: transform 0.3s ease;
-        }
-
-        .news-item:hover {
-            transform: translateY(-5px);
-        }
-
-        .news-item h4 {
-            color: #00d4ff;
-            margin-bottom: 0.5rem;
-        }
-
-        /* Loading Spinner */
-        .loading {
-            text-align: center;
-            font-size: 1.2rem;
-            color: #00d4ff;
-            display: none;
-        }
-
-        /* Footer */
-        footer {
-            text-align: center;
-            padding: 3rem;
-            background: #0d1b2a;
-            color: #b0b8c4;
-            font-size: 1.1rem;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .hero-content h1 {
-                font-size: 2.8rem;
-            }
-
-            .hero-content p {
-                font-size: 1.1rem;
-            }
-
-            nav ul {
-                gap: 1rem;
-            }
-
-            .controls {
-                flex-direction: column;
-                align-items: center;
-            }
-
-            input, select {
-                width: 100%;
-                max-width: 300px;
-            }
-
-            .dashboard h2 {
-                font-size: 2rem;
-            }
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .hero-content, .dashboard {
-            animation: fadeIn 1.2s ease-out;
-        }
-    </style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>WIF/USDT Browser ML Price-Predictor</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; padding:0; background:#0f1720; color:#e6eef8; }
+    header { padding: 12px 18px; display:flex; gap:12px; align-items:center; background:linear-gradient(90deg,#071024,#0b1020); }
+    .btn { background:#1f2937; color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    .btn.primary { background:#0ea5a4; color:#022; }
+    main { display:flex; gap:12px; padding:12px; }
+    #left { flex: 1 1 70%; }
+    #right { width: 380px; display:flex; flex-direction:column; gap:12px; }
+    #chart { height: 520px; border-radius:8px; overflow:hidden; background:#071126; }
+    .panel { background:#071726; padding:10px; border-radius:8px; }
+    label { display:flex; gap:8px; align-items:center; }
+    table { width:100%; color:#e6eef8; border-collapse: collapse; }
+    th,td { padding:6px 8px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.03); }
+    .signal-buy { color:#0f0; font-weight:700; }
+    .signal-sell { color:#f55; font-weight:700; }
+  </style>
+  <!-- CDN imports -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-    <!-- Header -->
-    <header>
-        <nav>
-            <div class="logo">Price Oracle</div>
-            <ul>
-                <li><a href="#home">Home</a></li>
-                <li><a href="#dashboard">Dashboard</a></li>
-                <li><a href="#about">About</a></li>
-                <li><a href="#contact">Contact</a></li>
-            </ul>
-        </nav>
-    </header>
+<header>
+  <h3 style="margin:0">WIF/USDT Browser ML Price-Predictor — SPA</h3>
+  <div style="margin-left:auto; display:flex; gap:8px;">
+    <button class="btn" id="btn-start">Start Live</button>
+    <button class="btn" id="btn-stop">Stop Live</button>
+    <button class="btn primary" id="btn-train">Train</button>
+    <button class="btn" id="btn-backtest">Backtest</button>
+    <button class="btn" id="btn-export">Export CSV</button>
+  </div>
+</header>
 
-    <!-- Hero Section -->
-    <section class="hero" id="home">
-        <div class="hero-content">
-            <h1>Master the Markets with AI</h1>
-            <p>Unlock the power of advanced price predictions, technical indicators, and real-time insights with our state-of-the-art platform.</p>
-            <a href="#dashboard" class="cta-button">Explore Dashboard</a>
-        </div>
-    </section>
+<main>
+  <div id="left">
+    <div id="chart" class="panel"></div>
+    <div class="panel" style="margin-top:10px;">
+      <strong>Signals / Latest Trades</strong>
+      <table>
+        <thead><tr><th>Time</th><th>Signal</th><th>Price</th><th>Model</th></tr></thead>
+        <tbody id="signals-table"></tbody>
+      </table>
+    </div>
+  </div>
 
-    <!-- Dashboard Section -->
-    <section class="dashboard" id="dashboard">
-        <h2>Financial Intelligence Hub</h2>
-        <div class="tabs">
-            <div class="tab active" onclick="showTab('predictions')">Predictions</div>
-            <div class="tab" onclick="showTab('historical')">Historical Data</div>
-            <div class="tab" onclick="showTab('indicators')">Indicators</div>
-            <div class="tab" onclick="flation')">Economic Indicators</div>
-            <div class="tab" onclick="showTab('news')">News</div>
-        </div>
+  <aside id="right">
+    <div class="panel">
+      <strong>Feature Toggles</strong>
+      <div>
+        <label><input type="checkbox" id="toggle-ema" checked/> EMA</label>
+        <label><input type="checkbox" id="toggle-rsi" checked/> RSI</label>
+        <label><input type="checkbox" id="toggle-vwap"/> VWAP</label>
+        <label><input type="checkbox" id="toggle-depth"/> Depth Imbalance</label>
+        <label><input type="checkbox" id="toggle-tradesign" checked/> Trade-sign Imbalance</label>
+      </div>
+    </div>
 
-        <!-- Controls -->
-        <div class="controls">
-            <input type="text" id="symbol" placeholder="Symbol (e.g., AAPL)" required>
-            <select id="model-type">
-                <option value="ensemble">Ensemble</option>
-                <option value="time_series">Time Series</option>
-                <option value="ml">Machine Learning</option>
-                <option value="dl">Deep Learning</option>
-            </select>
-            <input type="date" id="start-date" placeholder="Start Date">
-            <input type="date" id="end-date" placeholder="End Date">
-            <button onclick="fetchData()">Fetch Data</button>
-        </div>
+    <div class="panel">
+      <strong>Model Controls</strong>
+      <div>
+        <label><input type="checkbox" id="model-baseline" checked/> Baseline (linear)</label>
+        <label><input type="checkbox" id="model-mlp" checked/> MLP</label>
+        <label><input type="checkbox" id="model-lstm" /> LSTM</label>
+      </div>
+      <div style="margin-top:8px;">
+        <label>Window (timesteps): <input type="number" id="window-size" value="60" style="width:80px"/></label>
+        <label>Train epochs: <input type="number" id="epochs" value="10" style="width:80px"/></label>
+      </div>
+    </div>
 
-        <div class="loading" id="loading">Loading...</div>
+    <div class="panel">
+      <strong>Backtest</strong>
+      <label>Slippage (bps): <input id="slippage" type="number" value="10" style="width:80px"/></label>
+      <label>Fee (%): <input id="fee" type="number" value="0.1" step="0.01" style="width:80px"/></label>
+      <div id="bt-report" style="margin-top:8px; font-size:13px;"></div>
+    </div>
 
-        <!-- Predictions Tab -->
-        <div id="predictions" class="tab-content">
-            <div class="chart-container">
-                <canvas id="prediction-chart"></canvas>
-            </div>
-        </div>
+    <div class="panel">
+      <strong>Data & Infra</strong>
+      <p style="font-size:13px">Live tick source: Binance (public). For paid/secure endpoints (WhaleAlert, Nansen, Glassnode) use a server-signed proxy and configure URL in settings (not shown here).</p>
+    </div>
+  </aside>
+</main>
 
-        <!-- Historical Data Tab -->
-        <div id="historical" class="tab-content" style="display: none;">
-            <div class="chart-container">
-                <canvas id="historical-chart"></canvas>
-            </div>
-        </div>
+<script type="module">
+/* ============================
+   Core in-memory data structures
+   ============================ */
+const state = {
+  candles: [],       // {time: UNIX sec, open, high, low, close, volume}
+  trades: [],        // {time, price, qty, side}
+  depthSnapshots: [],// {time, bids:[[price,qty]..], asks:[]}
+  features: [],      // per-candle feature vectors
+  signals: [],       // {time, type:'buy'|'sell', price, model}
+  ws: null,
+  live: false,
+  models: {},        // trained models (mlp, lstm, baseline)
+};
 
-        <!-- Indicators Tab -->
-        <div id="indicators" class="tab-content" style="display: none;">
-            <div class="chart-container">
-                <canvas id="indicators-chart"></canvas>
-            </div>
-        </div>
+/* ============================
+   Utilities / Indicators
+   ============================ */
+function sma(values, period){
+  const out = new Array(values.length).fill(null);
+  let sum = 0;
+  for(let i=0;i<values.length;i++){
+    sum += values[i];
+    if(i>=period) sum -= values[i-period];
+    if(i>=period-1) out[i] = sum/period;
+  }
+  return out;
+}
+function ema(values, period){
+  const out = new Array(values.length).fill(null);
+  const k = 2/(period+1);
+  let prev = values[0];
+  for(let i=0;i<values.length;i++){
+    const v = values[i];
+    if(i===0) prev = v, out[i]=v;
+    else { prev = v * k + prev * (1-k); out[i] = prev; }
+  }
+  return out;
+}
+function rsi(values, period=14){
+  const out = new Array(values.length).fill(null);
+  let gain=0, loss=0;
+  for(let i=1;i<values.length;i++){
+    const delta = values[i]-values[i-1];
+    gain = gain*(period-1)/period + Math.max(0,delta)/period;
+    loss = loss*(period-1)/period + Math.max(0,-delta)/period;
+    if(i>=period) out[i] = (loss===0)?100:100 - (100/(1+(gain/loss)));
+  }
+  return out;
+}
+function vwap(candles){
+  // simple VWAP per candle = cumulative typical*vol / cum vol, but we return per-candle VWAP of that candle
+  return candles.map(c=>{
+    const typical = (c.high + c.low + c.close)/3;
+    return (typical * c.volume) / (c.volume || 1);
+  });
+}
+function atr(candles, period=14){
+  const out = new Array(candles.length).fill(null);
+  let prevClose = candles[0].close;
+  const trs = [];
+  for(let i=0;i<candles.length;i++){
+    const c = candles[i];
+    const tr = Math.max(c.high - c.low, Math.abs(c.high - prevClose), Math.abs(c.low - prevClose));
+    trs.push(tr);
+    prevClose = c.close;
+    if(i>=period) {
+      out[i] = trs.slice(i-period+1, i+1).reduce((a,b)=>a+b,0)/period;
+    }
+  }
+  return out;
+}
 
-        <!-- Economic Indicators Tab -->
-        <div id="economic" class="tab-content" style="display: none;">
-            <div class="chart-container">
-                <canvas id="economic-chart"></canvas>
-            </div>
-        </div>
+/* ============================
+   Microstructure features
+   ============================ */
+function depthImbalance(snapshot){
+  // snapshot: {bids:[[p,q]], asks:[[p,q]]} -> compute top-N depth imbalance
+  const top = 5;
+  const bidVol = snapshot.bids.slice(0,top).reduce((s,[p,q])=>s+parseFloat(q),0);
+  const askVol = snapshot.asks.slice(0,top).reduce((s,[p,q])=>s+parseFloat(q),0);
+  return (bidVol - askVol) / (bidVol + askVol + 1e-9);
+}
+function tradeSignImbalance(tradesWindow){
+  // tradesWindow: array of trade objects with .side 'buy'|'sell' and qty
+  const buy = tradesWindow.filter(t=>t.side==='buy').reduce((s,t)=>s+t.qty,0);
+  const sell = tradesWindow.filter(t=>t.side==='sell').reduce((s,t)=>s+t.qty,0);
+  return (buy - sell) / (buy + sell + 1e-9);
+}
 
-        <!-- News Tab -->
-        <div id="news" class="tab-content" style="display: none;">
-            <div class="news-feed" id="news-feed"></div>
-        </div>
-    </section>
+/* ============================
+   Feature pipeline: build feature vector per candle
+   ============================ */
+function buildFeatures(candles, depthSnapshots, trades){
+  // returns features[] aligned with candles (same length)
+  const closes = candles.map(c=>c.close);
+  const ema12 = ema(closes, 12);
+  const ema26 = ema(closes, 26);
+  const rsi14 = rsi(closes, 14);
+  const atr14 = atr(candles, 14);
+  const vwapArr = vwap(candles);
+  const features = [];
+  for(let i=0;i<candles.length;i++){
+    const feature = {
+      time: candles[i].time,
+      close: candles[i].close,
+      ema12: ema12[i] ?? 0,
+      ema26: ema26[i] ?? 0,
+      emaDiff: (ema12[i] ?? 0) - (ema26[i] ?? 0),
+      rsi14: rsi14[i] ?? 50,
+      atr14: atr14[i] ?? 0,
+      vwap: vwapArr[i] ?? candles[i].close,
+      volume: candles[i].volume,
+      depthImbalance: (depthSnapshots[i]) ? depthImbalance(depthSnapshots[i]) : 0,
+      tradeSignImbalance: 0 // compute using last N trades aligning to this candle time
+    };
+    // compute trade sign imbalance for trades within candle
+    const start = candles[i].time*1000, end = start + (candles[1]? (candles[1].time-candles[0].time)*1000 : 60000);
+    const tw = trades.filter(t=>t.time>=start && t.time<end);
+    feature.tradeSignImbalance = tradeSignImbalance(tw);
+    features.push(feature);
+  }
+  return features;
+}
 
-    <!-- Footer -->
-    <footer>
-        <p>© 2025 Price Oracle. Powered by AI, Built for the Future.</p>
-    </footer>
+/* ============================
+   Simple Baseline (ridge-like) using ordinary least squares with L2
+   ============================ */
+function trainBaseline(features, labels, lambda=1e-3){
+  // features: array of feature objects; labels: numeric (next-return)
+  // Build X matrix with a few standardized features
+  const X = features.map(f => [1, f.close, f.emaDiff, f.rsi14, f.depthImbalance, f.tradeSignImbalance, f.volume]);
+  // Solve (X^T X + lambda*I) w = X^T y
+  const XT = numericTranspose(X);
+  const XTX = numericDot(XT, X);
+  for(let i=0;i<XTX.length;i++) XTX[i][i] += lambda;
+  const XTy = numericDotVec(XT, labels);
+  const w = numericSolveLinearSystem(XTX, XTy); // fallback simple linear solver (we implement below)
+  return {weights:w};
+}
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        // Chart.js Instances
-        let predictionChart = null;
-        let historicalChart = null;
-        let indicatorsChart = null;
-        let economicChart = null;
+/* Very small numeric helpers (sufficient for small feature sizes) */
+function numericTranspose(A){ return A[0].map((_,c)=>A.map(r=>r[c])); }
+function numericDot(A,B){
+  const m=A.length, n=B[0].length, p=B.length;
+  const C = Array.from({length:m}, ()=>Array(n).fill(0));
+  for(let i=0;i<m;i++){
+    for(let k=0;k<p;k++){
+      const aik = A[i][k];
+      for(let j=0;j<n;j++) C[i][j] += aik * B[k][j];
+    }
+  }
+  return C;
+}
+function numericDotVec(A, v){
+  // A: m x n ; v: n-vector -> returns m-vector
+  return A.map(row => row.reduce((s,ri,idx)=>s + ri * v[idx], 0));
+}
+function numericSolveLinearSystem(A, b){
+  // Solve A x = b using Gaussian elimination (A is small, NxN)
+  const n = A.length;
+  const M = A.map((r,i)=>r.concat(b[i]));
+  // forward
+  for(let k=0;k<n;k++){
+    // pivot
+    let i_max = k;
+    for(let i=k+1;i<n;i++) if(Math.abs(M[i][k])>Math.abs(M[i_max][k])) i_max = i;
+    if(i_max!==k) { const tmp = M[k]; M[k]=M[i_max]; M[i_max]=tmp; }
+    const pivot = M[k][k];
+    if(Math.abs(pivot) < 1e-12) continue;
+    for(let j=k;j<=n;j++) M[k][j] /= pivot;
+    for(let i=0;i<n;i++){
+      if(i===k) continue;
+      const f = M[i][k];
+      for(let j=k;j<=n;j++) M[i][j] -= f*M[k][j];
+    }
+  }
+  const x = M.map(r=>r[n]);
+  return x;
+}
 
-        // Chart Initialization
-        function initializeChart(canvasId, labels = [], datasets = []) {
-            const ctx = document.getElementById(canvasId).getContext('2d');
-            let chartInstance;
-            switch (canvasId) {
-                case 'prediction-chart':
-                    if (predictionChart) predictionChart.destroy();
-                    chartInstance = predictionChart;
-                    break;
-                case 'historical-chart':
-                    if (historicalChart) historicalChart.destroy();
-                    chartInstance = historicalChart;
-                    break;
-                case 'indicators-chart':
-                    if (indicatorsChart) indicatorsChart.destroy();
-                    chartInstance = indicatorsChart;
-                    break;
-                case 'economic-chart':
-                    if (economicChart) economicChart.destroy();
-                    chartInstance = economicChart;
-                    break;
-            }
+/* Baseline prediction */
+function baselinePredict(model, f){
+  const x = [1, f.close, f.emaDiff, f.rsi14, f.depthImbalance, f.tradeSignImbalance, f.volume];
+  let y = 0;
+  for(let i=0;i<x.length;i++) y += x[i] * (model.weights[i] || 0);
+  return y;
+}
 
-            return new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: { title: { display: true, text: 'Date', color: '#e0e1dd' } },
-                        y: { title: { display: true, text: 'Value', color: '#e0e1dd' } }
-                    },
-                    plugins: { legend: { labels: { color: '#e0e1dd' } } }
-                }
-            });
+/* ============================
+   TensorFlow.js model builders
+   ============================ */
+async function buildMLP(inputLen){
+  const model = tf.sequential();
+  model.add(tf.layers.dense({inputShape:[inputLen], units:64, activation:'relu'}));
+  model.add(tf.layers.dropout({rate:0.1}));
+  model.add(tf.layers.dense({units:32, activation:'relu'}));
+  model.add(tf.layers.dense({units:1}));
+  model.compile({optimizer: tf.train.adam(0.001), loss: 'meanSquaredError', metrics:['mse']});
+  return model;
+}
+async function buildLSTM(seqLen, featureLen){
+  // shape: [batch, timesteps, features]
+  const model = tf.sequential();
+  model.add(tf.layers.lstm({inputShape:[seqLen, featureLen], units:64, returnSequences:false}));
+  model.add(tf.layers.dense({units:32, activation:'relu'}));
+  model.add(tf.layers.dense({units:1}));
+  model.compile({optimizer: tf.train.adam(0.001), loss:'meanSquaredError', metrics:['mse']});
+  return model;
+}
+
+/* ============================
+   Prepare sequential dataset windows
+   ============================ */
+function buildSequenceDataset(features, labelFn, windowSize=60){
+  // features: array of feature objects ordered by time
+  // labelFn: fn(i) returns label for time i (e.g., next return)
+  const X = [], Y = [];
+  for(let i=0;i+windowSize<features.length;i++){
+    const win = features.slice(i, i+windowSize).map(f=>[
+      f.close, f.emaDiff, f.rsi14, f.atr14 || 0, f.depthImbalance, f.tradeSignImbalance, f.volume
+    ]);
+    const label = labelFn(i+windowSize-1); // label at window end (predict next)
+    if(label==null) continue;
+    X.push(win);
+    Y.push(label);
+  }
+  return {X, Y};
+}
+
+/* ============================
+   Backtesting harness
+   ============================ */
+function simpleBacktest(candles, preds, options){
+  // candles aligned with preds; preds: numeric predicted return or signal; options: slippage_bps, fee_pct
+  const slippage = (options.slippage_bps||10)/10000;
+  const fee = (options.fee_pct||0.1)/100;
+  let pos = 0; // 1 = long, 0 = flat
+  let entryPrice = 0;
+  let cash = 1.0; // start equity normalized
+  let shares = 0;
+  const trades = [];
+  for(let i=0;i<candles.length;i++){
+    const p = candles[i].close;
+    const pred = preds[i];
+    // simple rule: buy if pred > 0, sell if pred < 0
+    if(pred > 0.0005 && pos===0){
+      // buy
+      const execPrice = p * (1 + slippage);
+      // buy with all cash
+      shares = cash / execPrice * (1 - fee);
+      entryPrice = execPrice;
+      pos = 1;
+      trades.push({time:candles[i].time, type:'buy', price:execPrice});
+    } else if(pred < -0.0005 && pos===1){
+      // sell
+      const execPrice = p * (1 - slippage);
+      cash = shares * execPrice * (1 - fee);
+      shares = 0;
+      pos = 0;
+      trades.push({time:candles[i].time, type:'sell', price:execPrice});
+    }
+  }
+  // close last position at final price
+  const finalPrice = candles[candles.length-1].close;
+  if(pos===1){
+    const execPrice = finalPrice * (1 - slippage);
+    cash = shares * execPrice * (1 - fee);
+    trades.push({time:candles[candles.length-1].time, type:'sell', price:execPrice});
+  }
+  // compute returns
+  const ret = (cash - 1.0) / 1.0;
+  return {finalEquity: cash, return: ret, trades};
+}
+
+/* ============================
+   Chart: lightweight-charts integration
+   ============================ */
+const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+  width: document.getElementById('chart').clientWidth,
+  height: 520,
+  layout: { backgroundColor: '#071726', textColor: '#d9eef8' },
+  rightPriceScale: { borderColor: 'rgba(197,203,206,0.4)' },
+  timeScale: { borderColor: 'rgba(197,203,206,0.4)' }
+});
+const candleSeries = chart.addCandlestickSeries({ priceLineVisible: false });
+let overlaySeries = {};
+let markers = [];
+function drawCandles(candles){
+  const data = candles.map(c=>({
+    time: c.time, open: c.open, high: c.high, low: c.low, close: c.close
+  }));
+  candleSeries.setData(data);
+}
+function drawIndicatorLine(name, arr, color){
+  if(!overlaySeries[name]) overlaySeries[name] = chart.addLineSeries({lineWidth:1});
+  const pts = arr.map((v,i)=>({time: state.candles[i].time, value: v===null?undefined:v}));
+  overlaySeries[name].setData(pts);
+}
+function clearMarkers(){
+  markers = [];
+  candleSeries.setMarkers([]);
+}
+function setMarkersFromSignals(signals){
+  markers = signals.map(s=>({
+    time: s.time,
+    position: s.type==='buy' ? 'belowBar' : 'aboveBar',
+    color: s.type==='buy' ? 'rgba(0,200,120,0.9)' : 'rgba(255,90,90,0.9)',
+    shape: 'arrowUp',
+    text: `${s.model}:${s.type}`
+  }));
+  candleSeries.setMarkers(markers);
+}
+
+/* ============================
+   Live data ingestion (Binance WebSocket)
+   ============================ */
+function startLive(pair='WIFUSDT'){
+  if(state.live) return;
+  // Binance public stream wss://stream.binance.com:9443/ws/wifusdt@kline_1m
+  const symbol = pair.toLowerCase();
+  const wsUrl = `wss://stream.binance.com:9443/ws/${symbol}@kline_1m`;
+  state.ws = new WebSocket(wsUrl);
+  state.ws.onopen = ()=>{ console.log('ws open'); state.live = true; };
+  state.ws.onmessage = (ev)=>{
+    const msg = JSON.parse(ev.data);
+    if(msg.k){
+      const k = msg.k;
+      const candle = {
+        time: Math.floor(k.t / 1000),
+        open: parseFloat(k.o),
+        high: parseFloat(k.h),
+        low: parseFloat(k.l),
+        close: parseFloat(k.c),
+        volume: parseFloat(k.v)
+      };
+      // append or replace
+      const last = state.candles[state.candles.length-1];
+      if(last && last.time === candle.time) state.candles[state.candles.length-1] = candle;
+      else state.candles.push(candle);
+      // refresh features and chart
+      rebuildAndRender();
+    }
+  };
+  state.ws.onclose = ()=>{ state.live = false; console.log('ws closed'); };
+}
+function stopLive(){
+  if(state.ws) {
+    state.ws.close();
+    state.ws = null;
+    state.live = false;
+  }
+}
+
+/* ============================
+   Rebuild features and render UI
+   ============================ */
+function rebuildAndRender(){
+  // Build features aligned with candles (we currently don't have depth snapshots in this demo)
+  state.features = buildFeatures(state.candles, state.depthSnapshots, state.trades);
+  drawCandles(state.candles);
+  // indicators toggles
+  if(document.getElementById('toggle-ema').checked){
+    const closes = state.candles.map(c=>c.close);
+    const ema12 = ema(closes, 12);
+    drawIndicatorLine('EMA12', ema12);
+  } else if(overlaySeries['EMA12']) { overlaySeries['EMA12'].setData([]); }
+  if(document.getElementById('toggle-rsi').checked){
+    const closes = state.candles.map(c=>c.close);
+    const rsi14 = rsi(closes, 14);
+    // scale RSI to price scale by mapping [0,100] -> between min and max price for visibility (quick hack)
+    const minP = Math.min(...state.candles.map(c=>c.low));
+    const maxP = Math.max(...state.candles.map(c=>c.high));
+    const scaled = rsi14.map(v => v===null?null : minP + (v/100)*(maxP-minP));
+    drawIndicatorLine('RSI14', scaled);
+  } else if(overlaySeries['RSI14']) { overlaySeries['RSI14'].setData([]); }
+  // plot saved model signals
+  setMarkersFromSignals(state.signals);
+  // update table
+  const tbody = document.getElementById('signals-table'); tbody.innerHTML = '';
+  const lastSignals = state.signals.slice(-50).reverse();
+  for(const s of lastSignals){
+    const tr = document.createElement('tr');
+    const t = new Date(s.time*1000).toLocaleString();
+    tr.innerHTML = `<td>${t}</td><td class="${s.type==='buy'?'signal-buy':'signal-sell'}">${s.type}</td><td>${s.price.toFixed(6)}</td><td>${s.model}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+/* ============================
+   Model orchestration: Train in Web Worker (tfjs runs in window; worker will import tf via CDN)
+   ============================ */
+let trainWorker = null;
+function startTrainingInWorker(payload){
+  // payload contains {features, windowSize, epochs, whichModels}
+  if(trainWorker) { trainWorker.terminate(); trainWorker = null; }
+  // create worker from blob
+  const workerCode = `
+    importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js');
+    self.onmessage = async (ev) => {
+      const {features, windowSize, epochs, whichModels} = ev.data;
+      // prepare numeric arrays
+      const rawF = features;
+      const closes = rawF.map(f=>f.close);
+      // build label: next-log-return
+      const labels = [];
+      for(let i=0;i<rawF.length-1;i++){
+        labels.push(Math.log(rawF[i+1].close / rawF[i].close));
+      }
+      labels.push(0);
+      // Baseline training: a tiny closed-form on CPU (host can compute; we'll simply return null)
+      const baseline = null;
+      const results = {baseline:null, mlp:null, lstm:null};
+      // Prepare dataset for tfjs MLP: flatten last window state into vector
+      const featureVecs = rawF.map(f=>[f.close, f.emaDiff, f.rsi14, f.atr14||0, f.depthImbalance, f.tradeSignImbalance, f.volume]);
+      const X = [];
+      const Y = [];
+      for(let i=0;i+windowSize<featureVecs.length;i++){
+        // flatten
+        const win = featureVecs.slice(i, i+windowSize).flat();
+        X.push(win);
+        Y.push(labels[i+windowSize-1]);
+      }
+      const inputDim = X[0] ? X[0].length : 0;
+      if(whichModels.includes('mlp') && inputDim>0){
+        const xs = tf.tensor2d(X);
+        const ys = tf.tensor2d(Y, [Y.length,1]);
+        const mlp = tf.sequential();
+        mlp.add(tf.layers.dense({inputShape:[inputDim], units:128, activation:'relu'}));
+        mlp.add(tf.layers.dense({units:64, activation:'relu'}));
+        mlp.add(tf.layers.dense({units:1}));
+        mlp.compile({optimizer:'adam', loss:'meanSquaredError'});
+        await mlp.fit(xs, ys, {epochs: epochs, batchSize:32, verbose:0});
+        // save model to IndexedDB
+        await mlp.save('indexeddb://wif_mlp_v1');
+        results.mlp = {status:'trained', inputDim};
+        tf.dispose([xs,ys]);
+      }
+      if(whichModels.includes('lstm')){
+        // Build seq dataset for 3D tensors
+        const seqX = [];
+        const seqY = [];
+        const featLen = featureVecs[0].length;
+        for(let i=0;i+windowSize<featureVecs.length;i++){
+          seqX.push(featureVecs.slice(i, i+windowSize));
+          seqY.push(labels[i+windowSize-1]);
         }
-
-        // Tab Management
-        function showTab(tabId) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
-            document.querySelector(`.tab[onclick="showTab('${tabId}')"]`).classList.add('active');
-            document.getElementById(tabId).style.display = 'block';
+        if(seqX.length>0){
+          const xs = tf.tensor3d(seqX);
+          const ys = tf.tensor2d(seqY, [seqY.length,1]);
+          const lstm = tf.sequential();
+          lstm.add(tf.layers.lstm({units:64, inputShape:[windowSize, featLen]}));
+          lstm.add(tf.layers.dense({units:1}));
+          lstm.compile({optimizer:'adam', loss:'meanSquaredError'});
+          await lstm.fit(xs, ys, {epochs: epochs, batchSize:16, verbose:0});
+          await lstm.save('indexeddb://wif_lstm_v1');
+          results.lstm = {status:'trained', seqLen:windowSize, featLen};
+          tf.dispose([xs,ys]);
         }
+      }
+      self.postMessage({status:'done', results});
+    };
+  `;
+  const blob = new Blob([workerCode], {type:'application/javascript'});
+  trainWorker = new Worker(URL.createObjectURL(blob));
+  trainWorker.onmessage = (ev)=>{ console.log('Worker:', ev.data); alert('Training done: ' + JSON.stringify(ev.data.results)); trainWorker.terminate(); trainWorker=null; };
+  trainWorker.postMessage(payload);
+}
 
-        // Fetch Data Based on Tab
-        async function fetchData() {
-            const symbol = document.getElementById('symbol').value.trim().toUpperCase();
-            const modelType = document.getElementById('model-type').value;
-            const startDate = document.getElementById('start-date').value;
-            const endDate = document.getElementById('end-date').value;
-            const activeTab = document.querySelector('.tab.active').getAttribute('onclick').match(/'([^']+)'/)[1];
+/* ============================
+   Evaluate & run models (in main thread) -> produce predictions per-candle
+   ============================ */
+async function predictAll(){
+  const f = state.features;
+  if(f.length===0) return [];
+  // baseline
+  let predsBaseline = new Array(f.length).fill(0);
+  if(state.models.baseline) {
+    predsBaseline = f.map(fi => baselinePredict(state.models.baseline, fi));
+  }
+  // mlp
+  let predsMLP = new Array(f.length).fill(0);
+  try {
+    const mlp = await tf.loadLayersModel('indexeddb://wif_mlp_v1');
+    // build input windows flattened
+    const windowSize = parseInt(document.getElementById('window-size').value);
+    const featVecs = f.map(fi=>[fi.close, fi.emaDiff, fi.rsi14, fi.atr14||0, fi.depthImbalance, fi.tradeSignImbalance, fi.volume]);
+    const inputDim = windowSize * featVecs[0].length;
+    const X = [];
+    for(let i=0;i+windowSize<featVecs.length;i++){
+      X.push(featVecs.slice(i, i+windowSize).flat());
+    }
+    if(X.length>0){
+      const xs = tf.tensor2d(X);
+      const ys = mlp.predict(xs);
+      const preds = Array.from(await ys.data());
+      // align predictions to candle index (place prediction at end of each window)
+      for(let i=0;i<preds.length;i++){
+        predsMLP[i+windowSize-1] = preds[i];
+      }
+      tf.dispose([xs, ys]);
+    }
+  } catch(e){ console.warn('load mlp failed', e); }
+  // lstm
+  let predsLSTM = new Array(f.length).fill(0);
+  try {
+    const lstm = await tf.loadLayersModel('indexeddb://wif_lstm_v1');
+    const windowSize = parseInt(document.getElementById('window-size').value);
+    const featVecs = f.map(fi=>[fi.close, fi.emaDiff, fi.rsi14, fi.atr14||0, fi.depthImbalance, fi.tradeSignImbalance, fi.volume]);
+    const seqX = [];
+    for(let i=0;i+windowSize<featVecs.length;i++){
+      seqX.push(featVecs.slice(i, i+windowSize));
+    }
+    if(seqX.length>0){
+      const xs = tf.tensor3d(seqX);
+      const ys = lstm.predict(xs);
+      const preds = Array.from(await ys.data());
+      for(let i=0;i<preds.length;i++) predsLSTM[i+windowSize-1] = preds[i];
+      tf.dispose([xs, ys]);
+    }
+  } catch(e){ console.warn('load lstm failed', e); }
 
-            if (!symbol) {
-                alert('Please enter a symbol');
-                return;
-            }
+  // ensemble: weighted average (equal weights for now)
+  const predsEnsemble = new Array(f.length).fill(0);
+  for(let i=0;i<f.length;i++){
+    const parts = [];
+    if(document.getElementById('model-baseline').checked) parts.push(predsBaseline[i]);
+    if(document.getElementById('model-mlp').checked) parts.push(predsMLP[i]);
+    if(document.getElementById('model-lstm').checked) parts.push(predsLSTM[i]);
+    const avg = parts.reduce((a,b)=>a+b,0) / (parts.length || 1);
+    predsEnsemble[i] = avg;
+  }
+  return predsEnsemble;
+}
 
-            document.getElementById('loading').style.display = 'block';
+/* ============================
+   UI Buttons wiring
+   ============================ */
+document.getElementById('btn-start').onclick = ()=> startLive();
+document.getElementById('btn-stop').onclick = ()=> stopLive();
+document.getElementById('btn-train').onclick = ()=>{
+  const windowSize = parseInt(document.getElementById('window-size').value);
+  const epochs = parseInt(document.getElementById('epochs').value);
+  startTrainingInWorker({features: state.features, windowSize, epochs, whichModels:['mlp','lstm']});
+};
+document.getElementById('btn-backtest').onclick = async ()=>{
+  const preds = await predictAll();
+  // Use ensemble preds
+  const opts = {slippage_bps: parseFloat(document.getElementById('slippage').value), fee_pct: parseFloat(document.getElementById('fee').value)};
+  const bt = simpleBacktest(state.candles, preds, opts);
+  document.getElementById('bt-report').innerText = `Final equity: ${bt.finalEquity.toFixed(4)} | Return: ${(bt.return*100).toFixed(2)}% | Trades: ${bt.trades.length}`;
+  // create simple signals from trades for visual
+  state.signals = bt.trades.map(t=>({time:t.time, type: t.type==='buy'?'buy':'sell', price: t.price, model:'ensemble'}));
+  rebuildAndRender();
+};
+document.getElementById('btn-export').onclick = ()=>{
+  // export candles+features CSV
+  const rows = [['time,open,high,low,close,volume,emaDiff,rsi14,depthImbalance,tradeSignImbalance']];
+  for(let i=0;i<state.features.length;i++){
+    const f = state.features[i];
+    const c = state.candles[i];
+    rows.push(`${new Date(c.time*1000).toISOString()},${c.open},${c.high},${c.low},${c.close},${c.volume},${f.emaDiff},${f.rsi14},${f.depthImbalance},${f.tradeSignImbalance}`);
+  }
+  const blob = new Blob([rows.join("\n")], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'wif_features.csv'; a.click();
+};
 
-            try {
-                if (activeTab === 'predictions') {
-                    const response = await fetch(`http://localhost:8000/api/predict/${modelType}?symbol=${symbol}&days_ahead=7`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-                    predictionChart = initializeChart('prediction-chart', data.prediction_dates, [{
-                        label: 'Predicted Prices',
-                        data: data.predicted_prices,
-                        borderColor: '#00d4ff',
-                        backgroundColor: 'rgba(0, 212, 255, 0.2)',
-                        fill: true
-                    }]);
-                } else if (activeTab === 'historical') {
-                    const url = startDate && endDate 
-                        ? `http://localhost:8000/api/historical-data/${symbol}?start_date=${startDate}&end_date=${endDate}`
-                        : `http://localhost:8000/api/historical-data/${symbol}`;
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-                    const source = Object.keys(data.data)[0]; // Use first source
-                    const dates = data.data[source].map(d => d.date || d.timestamp);
-                    const prices = data.data[source].map(d => d.close);
-                    historicalChart = initializeChart('historical-chart', dates, [{
-                        label: 'Close Price',
-                        data: prices,
-                        borderColor: '#ff007a',
-                        backgroundColor: 'rgba(255, 0, 122, 0.2)',
-                        fill: true
-                    }]);
-                } else if (activeTab === 'indicators') {
-                    const url = startDate && endDate 
-                        ? `http://localhost:8000/api/indicators/${symbol}?start_date=${startDate}&end_date=${endDate}`
-                        : `http://localhost:8000/api/indicators/${symbol}`;
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-                    // Example: Plot RSI from momentum indicators
-                    const rsiData = data.indicators.momentum?.rsi || [];
-                    const dates = rsiData.map(d => d.date || d.timestamp);
-                    indicatorsChart = initializeChart('indicators-chart', dates, [{
-                        label: 'RSI',
-                        data: rsiData.map(d => d.value),
-                        borderColor: '#00ff7f',
-                        backgroundColor: 'rgba(0, 255, 127, 0.2)',
-                        fill: false
-                    }]);
-                } else if (activeTab === 'economic') {
-                    const response = await fetch(`http://localhost:8000/api/economic-indicators?indicators=GDP&indicators=UNRATE`);
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-                    const datasets = Object.keys(data.indicators).map(key => ({
-                        label: key,
-                        data: data.indicators[key].map(d => d.value),
-                        borderColor: key === 'GDP' ? '#ff007a' : '#00d4ff',
-                        backgroundColor: key === 'GDP' ? 'rgba(255, 0, 122, 0.2)' : 'rgba(0, 212, 255, 0.2)',
-                        fill: false
-                    }));
-                    const dates = data.indicators.GDP?.map(d => d.date) || [];
-                    economicChart = initializeChart('economic-chart', dates, datasets);
-                } else if (activeTab === 'news') {
-                    const response = await fetch(`http://localhost:8000/api/news/${symbol}?days=7`);
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
-                    const newsFeed = document.getElementById('news-feed');
-                    newsFeed.innerHTML = data.news.map(item => `
-                        <div class="news-item">
-                            <h4>${item.title || 'News'}</h4>
-                            <p>${item.description || item.summary || 'No description'}</p>
-                            <small>${new Date(item.date || item.published_at).toLocaleDateString()}</small>
-                        </div>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error: ' + error.message);
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
+/* initial render */
+rebuildAndRender();
 
-        // Initialize Charts
-        window.onload = () => {
-            predictionChart = initializeChart('prediction-chart');
-            historicalChart = initializeChart('historical-chart');
-            indicatorsChart = initializeChart('indicators-chart');
-            economicChart = initializeChart('economic-chart');
-        };
-    </script>
+</script>
 </body>
 </html>
