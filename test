@@ -1,314 +1,200 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WIF/USDT Browser ML Price Predictor</title>
-  <style>
-    :root{--bg:#0b1220;--card:#0f1724;--accent:#06f;--muted:#9aa7c7}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI, Roboto, Arial;color:#e6eef8;background:linear-gradient(180deg,#041022 0%, #071025 100%)}
-    .app{display:grid;grid-template-columns:1fr 420px;gap:12px;padding:12px;height:100%}
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:10px;padding:12px;box-shadow:0 6px 24px rgba(2,6,23,0.6);}
-    header{display:flex;gap:12px;align-items:center}
-    h1{margin:0;font-size:18px}
-    .left{display:flex;flex-direction:column;gap:12px}
-    #chart{height:520px}
-    .controls{display:flex;gap:8px;flex-wrap:wrap}
-    .controls input[type=text], .controls input[type=number], select{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px;border-radius:6px;color:var(--muted)}
-    .toggles{display:flex;gap:6px;flex-wrap:wrap}
-    .btn{background:var(--accent);border:none;color:#03101a;padding:8px 10px;border-radius:8px;cursor:pointer}
-    .sidebar{display:flex;flex-direction:column;gap:10px;height:100%}
-    .fill{flex:1;overflow:auto}
-    table{width:100%;border-collapse:collapse;color:var(--muted)}
-    th,td{padding:6px;border-bottom:1px dashed rgba(255,255,255,0.02);font-size:13px}
-    .small{font-size:12px;color:rgba(255,255,255,0.6)}
-    .signal-buy{color:#00ff99}
-    .signal-sell{color:#ff6b6b}
-    .chip{padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:8px}
-  </style>
-  <!-- Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
-  <script src="https://unpkg.com/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WIF/USDT ML Price Predictor</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+body { font-family: Arial; margin: 0; padding: 0; background: #0f0f0f; color: #fff;}
+#controls { padding: 10px; display: flex; flex-wrap: wrap; gap: 10px; background: #111;}
+button { padding: 5px 10px; cursor: pointer; }
+#chart { height: 600px; }
+#trade-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+#trade-table th, #trade-table td { border: 1px solid #444; padding: 4px; text-align: center; }
+</style>
 </head>
 <body>
-  <div class="app">
-    <div class="left card">
-      <header>
-        <div>
-          <h1>WIF/USDT — Browser ML Price Predictor</h1>
-          <div class="small">Live: Binance WS | On-chain & whale inputs | Train & backtest in-browser (TF.js)</div>
-        </div>
-        <div style="margin-left:auto" class="chip">IndexedDB storage • WebWorker training</div>
-      </header>
 
-      <div class="controls">
-        <label class="small">Kline interval:
-          <select id="interval">
-            <option value="1m">1m</option>
-            <option value="3m">3m</option>
-            <option value="5m">5m</option>
-            <option value="15m">15m</option>
-            <option value="1h">1h</option>
-            <option value="4h">4h</option>
-            <option value="1d">1d</option>
-          </select>
-        </label>
-        <label class="small">Window size:
-          <input id="windowSize" type="number" min="8" max="1024" value="60" style="width:80px" />
-        </label>
-        <button id="connectBtn" class="btn">Connect Live</button>
-        <button id="fetchHistoric" class="btn">Fetch Historic</button>
-        <button id="trainBtn" class="btn">Train Models</button>
-        <button id="backtestBtn" class="btn">Backtest</button>
-      </div>
+<div id="controls">
+  <button onclick="toggleSeries('EMA')">Toggle EMA</button>
+  <button onclick="toggleSeries('SMA')">Toggle SMA</button>
+  <button onclick="toggleSeries('MACD')">Toggle MACD</button>
+  <button onclick="toggleSeries('RSI')">Toggle RSI</button>
+  <button onclick="toggleSeries('BuySell')">Toggle Buy/Sell</button>
+  <button onclick="trainMLP()">Train MLP</button>
+</div>
 
-      <div id="chart" class="card"></div>
-
-      <div style="display:flex;gap:10px;align-items:center">
-        <div class="toggles">
-          <label class="chip"><input type="checkbox" id="showEMA" checked> EMA</label>
-          <label class="chip"><input type="checkbox" id="showRSI"> RSI</label>
-          <label class="chip"><input type="checkbox" id="showMACD"> MACD</label>
-          <label class="chip"><input type="checkbox" id="showVWAP"> VWAP</label>
-          <label class="chip"><input type="checkbox" id="showOBV"> OBV</label>
-        </div>
-        <div style="margin-left:auto" class="small">Signals: <span id="signalNow">—</span></div>
-      </div>
-
-      <div class="card" style="margin-top:12px">
-        <h3 style="margin:6px 0">Model Training & Status</h3>
-        <div id="modelsStatus" class="small">No models trained yet.</div>
-        <div style="margin-top:8px" id="modelMetrics" class="small"></div>
-      </div>
-    </div>
-
-    <aside class="sidebar card">
-      <div>
-        <h3 style="margin:0 0 8px 0">Data / API Keys</h3>
-        <div class="small">Paste API keys for paid providers (kept in-browser only). For production, run a signed proxy.</div>
-        <div style="display:grid;gap:6px;margin-top:8px">
-          <input id="whaleKey" placeholder="Whale Alert API Key (optional)" />
-          <input id="bitqueryKey" placeholder="Bitquery / Covalent API Key (optional)" />
-          <button id="testAPIs" class="btn">Test Keys</button>
-        </div>
-      </div>
-
-      <div class="fill card" style="margin-top:8px">
-        <h3 style="margin:0 0 8px 0">Signals & Trades (table)</h3>
-        <table id="signalsTable"><thead><tr><th>Time</th><th>Type</th><th>Price</th><th>Reason</th></tr></thead><tbody></tbody></table>
-      </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 8px 0">Backtest Report</h3>
-        <div id="backtestReport" class="small">No backtest run yet.</div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin:0 0 8px 0">Notes</h3>
-        <div class="small">• API keys are stored in localStorage only. • For paid endpoints use a backend proxy.</div>
-      </div>
-    </aside>
-  </div>
+<div id="chart"></div>
+<table id="trade-table">
+  <thead>
+    <tr><th>Time</th><th>Price</th><th>Qty</th><th>Signal</th></tr>
+  </thead>
+  <tbody id="trade-body"></tbody>
+</table>
 
 <script>
-// ----------------------------- Utilities & storage -----------------------------
-const STATE = {
-  candles: [], // {time, open, high, low, close, volume}
-  trades: [], // trade stream records
-  depth: null,
-  features: [], // feature vectors per candle
-  labels: [],
-  models: {},
-  indicators: {},
-}
+/************* Data Layer *************/
+let trades = [];
+let candles = [];
+let depth = { bids: [], asks: [] };
+let indicators = {};
+let signals = [];
 
-// small IndexedDB helper (promisified)
-const idb = {
-  db: null,
-  async init(){
-    return new Promise((res, rej)=>{
-      const r = indexedDB.open('wif-predictor',1);
-      r.onupgradeneeded = ()=>{ r.result.createObjectStore('candles',{keyPath:'time'}); r.result.createObjectStore('meta'); };
-      r.onsuccess = ()=>{ this.db = r.result; res(); }
-      r.onerror = e=>rej(e);
-    });
-  },
-  put(store, val){ return new Promise((res,rej)=>{ const tx = this.db.transaction(store,'readwrite'); tx.objectStore(store).put(val).onsuccess = ()=>res(); tx.onerror = e=>rej(e); }); },
-  getAll(store){ return new Promise((res,rej)=>{ const tx = this.db.transaction(store,'readonly'); const req = tx.objectStore(store).getAll(); req.onsuccess = ()=>res(req.result); req.onerror = e=>rej(e); }); }
-}
+const ws = new WebSocket("wss://stream.binance.com:9443/ws/wifusdt@trade");
+ws.onmessage = msg => {
+  const data = JSON.parse(msg.data);
+  const price = parseFloat(data.p);
+  const qty = parseFloat(data.q);
+  const time = data.T;
+  trades.push({ price, qty, time });
+  addCandle(price, time);
+  updateIndicators();
+  generateSignals();
+  updateChart();
+  updateTable();
+};
 
-// ----------------------------- Indicators -----------------------------
-function sma(arr, period){ if(arr.length<period) return null; let s=0; for(let i=arr.length-period;i<arr.length;i++)s+=arr[i]; return s/period }
-function ema(prevEma, price, period){ const k = 2/(period+1); return prevEma===null?price:price*k + prevEma*(1-k) }
-function rsi(closes, period=14){ if(closes.length<=period) return null; let gains=0,loss=0; for(let i=closes.length-period;i<closes.length;i++){ const d = closes[i]-closes[i-1]; if(d>0) gains+=d; else loss-=d } const rs = (gains/period)/(loss/period||1e-9); return 100 - (100/(1+rs)); }
-function macd(closes, short=12,long=26,signal=9){ if(closes.length<long) return null; let emaS=null, emaL=null; for(let i=0;i<closes.length;i++){ emaS = ema(emaS, closes[i], short); emaL = ema(emaL, closes[i], long); } const macdLine = emaS - emaL; // signal
- // compute signal using last `signal` macd points (approx)
- return {macd:macdLine}; }
-function vwap(candles){ let pv=0, v=0; for(const c of candles){ const typical = (c.high + c.low + c.close)/3; pv += typical * c.volume; v += c.volume } return v? pv/v : null }
-function obv(candles){ if(candles.length==0) return 0; let val=0; for(let i=1;i<candles.length;i++){ if(candles[i].close>candles[i-1].close) val+=candles[i].volume; else if(candles[i].close<candles[i-1].close) val-=candles[i].volume } return val }
-function atr(candles, period=14){ if(candles.length<=period) return null; let trs=[]; for(let i=1;i<candles.length;i++){ const hi=candles[i].high, lo=candles[i].low, prev=candles[i-1].close; trs.push(Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev))); } let sum=0; for(let i=trs.length-period;i<trs.length;i++) sum+=trs[i]; return sum/period }
-
-// microstructure features using stored depth/trades
-function depthImbalance(depth){ if(!depth) return 0; const bids = depth.bids.slice(0,10).reduce((s,[p,q])=>s+q,0); const asks = depth.asks.slice(0,10).reduce((s,[p,q])=>s+q,0); return (bids-asks)/(bids+asks||1) }
-
-// composite signals
-function whalePressureIndex(meta){ // simplistic composite—user can extend
-  return (meta.exchangeInflows||0) - (meta.exchangeOutflows||0);
-}
-
-// ----------------------------- Lightweight-charts UI -----------------------------
-const chartContainer = document.getElementById('chart');
-const chart = LightweightCharts.createChart(chartContainer, {layout:{background:'#071025',textColor:'#cfe8ff'},timeScale:{rightOffset:12,barSpacing:8}});
-const candleSeries = chart.addCandlestickSeries({upColor:'#00b894',downColor:'#ff7675',borderVisible:false,wickUpColor:'#00b894',wickDownColor:'#ff7675'});
-const emaSeries = chart.addLineSeries({color:'#f6e58d',lineWidth:1});
-const vwapSeries = chart.addLineSeries({color:'#6c5ce7',lineWidth:1});
-const signalMarkers = [];
-
-function drawCandles(){ const data = STATE.candles.map(c=>({time: Math.floor(c.time/1000), open:c.open, high:c.high, low:c.low, close:c.close})); candleSeries.setData(data); }
-
-function addSignalMarker(time, price, type, text){ const marker = {time: Math.floor(time/1000), position: type==='buy'?'belowBar':'aboveBar', color: type==='buy'?'#00ff99':'#ff6b6b',shape:'arrow'+(type==='buy'?'Up':'Down'), text }; candleSeries.applyOptions({}); candleSeries.setMarkers([ ...(candleSeries.getMarkers?candleSeries.getMarkers():[]), marker ]); }
-
-// ----------------------------- Binance Data (REST + WS) -----------------------------
-let binanceWS=null;
-async function fetchHistoric(symbol='WIFUSDT', interval='1m', limit=1000){
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-  const res = await fetch(url); const arr = await res.json();
-  // arr: [openTime, open, high, low, close, volume, closeTime, ...]
-  STATE.candles = arr.map(a=>({time:a[0], open:parseFloat(a[1]), high:parseFloat(a[2]), low:parseFloat(a[3]), close:parseFloat(a[4]), volume:parseFloat(a[5])}));
-  computeAllFeatures(); drawCandles(); console.log('historic loaded', STATE.candles.length);
-}
-
-function connectWS(symbol='wifusdt'){
-  if(binanceWS) binanceWS.close();
-  binanceWS = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
-  binanceWS.onmessage = e=>{
-    const d = JSON.parse(e.data);
-    if(d.k){ const k = d.k; const candle = {time:k.t, open:parseFloat(k.o), high:parseFloat(k.h), low:parseFloat(k.l), close:parseFloat(k.c), volume:parseFloat(k.v)}; upsertCandle(candle); }
+/************* Candle Aggregation (1m) *************/
+function addCandle(price, time) {
+  const minute = Math.floor(time / 60000);
+  let candle = candles[candles.length-1];
+  if(!candle || candle.minute !== minute){
+    candle = { time: time, open: price, high: price, low: price, close: price, volume: 0, minute };
+    candles.push(candle);
+  } else {
+    candle.high = Math.max(candle.high, price);
+    candle.low = Math.min(candle.low, price);
+    candle.close = price;
   }
-  binanceWS.onopen = ()=>console.log('binance ws open');
-  binanceWS.onclose = ()=>console.log('binance ws closed');
+  candle.volume += qty;
 }
-function upsertCandle(c){ const last = STATE.candles[STATE.candles.length-1]; if(!last || c.time>last.time) STATE.candles.push(c); else STATE.candles[STATE.candles.length-1]=c; computeAllFeatures(); drawCandles(); }
 
-// ----------------------------- Feature pipeline -----------------------------
-function computeAllFeatures(){
-  const closes = STATE.candles.map(c=>c.close);
-  const highs = STATE.candles.map(c=>c.high);
-  const lows = STATE.candles.map(c=>c.low);
-  STATE.indicators.ema20 = computeEMAArray(closes,20);
-  STATE.indicators.ema50 = computeEMAArray(closes,50);
-  STATE.indicators.rsi14 = closes.map((_,i)=> i>0 ? rsi(closes.slice(0,i+1),14):null);
-  STATE.indicators.vwap = vwap(STATE.candles.slice(-50));
-  STATE.indicators.obv = obv(STATE.candles);
-  // prepare feature vectors (sliding windows)
-  const window = parseInt(document.getElementById('windowSize').value||60);
-  STATE.features = [];
-  for(let i=window;i<STATE.candles.length-1;i++){
-    const slice = STATE.candles.slice(i-window,i);
-    const vec = [];
-    // normalized price series
-    const base = slice[slice.length-1].close;
-    for(const s of slice){ vec.push((s.close-base)/base); }
-    // add indicators at i
-    vec.push((STATE.indicators.ema20[i]||0 - base)/base || 0);
-    vec.push((STATE.indicators.ema50[i]||0 - base)/base || 0);
-    vec.push((STATE.indicators.rsi14[i]||0)/100);
-    vec.push((STATE.indicators.obv||0)/1e6);
-    // microstructure placeholders (depth imbalance)
-    vec.push(depthImbalance(STATE.depth)||0);
-    STATE.features.push(vec);
+/************* Indicators *************/
+function EMA(values, period){
+  const k = 2/(period+1);
+  let ema = [values[0]];
+  for(let i=1;i<values.length;i++){
+    ema.push(values[i]*k + ema[i-1]*(1-k));
   }
-  // labels: next return
-  STATE.labels = [];
-  for(let i=window;i<STATE.candles.length-1;i++){
-    const next = STATE.candles[i+1].close; const now = STATE.candles[i].close; STATE.labels.push((next-now)/now);
+  return ema;
+}
+function SMA(values, period){
+  let sma = [];
+  for(let i=0;i<values.length;i++){
+    if(i<period) { sma.push(values[i]); continue; }
+    let sum=0;
+    for(let j=i-period+1;j<=i;j++) sum+=values[j];
+    sma.push(sum/period);
   }
-  // update EMA overlay
-  const emaPath = STATE.candles.map((c, idx)=>({time:Math.floor(c.time/1000), value: STATE.indicators.ema20[idx]||null})).filter(x=>x.value!==null);
-  emaSeries.setData(emaPath);
-  vwapSeries.setData(STATE.candles.map((c,idx)=>({time:Math.floor(c.time/1000), value:STATE.indicators.vwap||null})).filter(x=>x.value!==null));
+  return sma;
 }
-function computeEMAArray(arr, period){ const out=[]; let prev=null; for(let i=0;i<arr.length;i++){ prev = ema(prev, arr[i], period); out.push(prev); } return out }
-
-// ----------------------------- Models (TF.js) -----------------------------
-function makeBaseline(inputShape){ const model = tf.sequential(); model.add(tf.layers.flatten({inputShape})); model.add(tf.layers.dense({units:1, useBias:true})); model.compile({loss:'meanSquaredError', optimizer:tf.train.adam(0.01)}); return model }
-function makeMLP(inputShape){ const model = tf.sequential(); model.add(tf.layers.flatten({inputShape})); model.add(tf.layers.dense({units:128,activation:'relu'})); model.add(tf.layers.dropout({rate:0.2})); model.add(tf.layers.dense({units:64,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError', optimizer:tf.train.adam(0.001)}); return model }
-function makeLSTM(inputShape){ const model = tf.sequential(); model.add(tf.layers.lstm({units:64,returnSequences:false,inputShape})); model.add(tf.layers.dense({units:32,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError',optimizer:tf.train.adam(0.001)}); return model }
-function makeCNN1D(inputShape){ const model = tf.sequential(); model.add(tf.layers.conv1d({filters:32,kernelSize:3,activation:'relu',inputShape})); model.add(tf.layers.maxPooling1d({poolSize:2})); model.add(tf.layers.flatten()); model.add(tf.layers.dense({units:32,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError',optimizer:tf.train.adam(0.001)}); return model }
-
-async function trainModels(){
-  if(STATE.features.length===0){ alert('No feature data — fetch historic first'); return; }
-  document.getElementById('modelsStatus').innerText = 'Preparing tensors...';
-  const X = tf.tensor(STATE.features); const y = tf.tensor(STATE.labels).reshape([STATE.labels.length,1]);
-  const inputShape = X.shape.slice(1);
-  // baseline
-  const baseline = makeBaseline(inputShape); document.getElementById('modelsStatus').innerText = 'Training baseline...';
-  await baseline.fit(X,y,{epochs:20,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`Baseline epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
-  // mlp
-  const mlp = makeMLP(inputShape); document.getElementById('modelsStatus').innerText = 'Training MLP...';
-  await mlp.fit(X,y,{epochs:30,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`MLP epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
-  // LSTM (requires 3D)
-  let Xseq = X.reshape([X.shape[0], X.shape[1], 1]);
-  const lstm = makeLSTM([Xseq.shape[1], Xseq.shape[2]]); document.getElementById('modelsStatus').innerText = 'Training LSTM...';
-  await lstm.fit(Xseq,y,{epochs:25,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`LSTM epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
-
-  // CNN
-  const Xcnn = Xseq; const cnn = makeCNN1D([Xcnn.shape[1], Xcnn.shape[2]]); document.getElementById('modelsStatus').innerText='Training CNN...';
-  await cnn.fit(Xcnn,y,{epochs:20,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`CNN epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
-
-  // save models in memory
-  STATE.models = {baseline, mlp, lstm, cnn};
-  document.getElementById('modelsStatus').innerText = 'Models trained: baseline, mlp, lstm, cnn';
-  // store minimal metadata
-  await idb.put('meta', {key:'models', value:Object.keys(STATE.models)});
-  X.dispose(); y.dispose(); Xseq.dispose();
-}
-
-// ----------------------------- Simple backtester -----------------------------
-function runBacktest({entryThreshold=0.001,exitThreshold=0.0005,slippage=0.0005,fee=0.001}){
-  if(!STATE.models.mlp) { alert('Train models first'); return; }
-  const preds = predictAll(STATE.features);
-  let balance=1, position=0, entryPrice=0; const trades=[]; const prices = STATE.candles.slice(-preds.length-1).map(c=>c.close);
-  for(let i=0;i<preds.length;i++){
-    const p = preds[i]; const price = prices[i];
-    // simple strategy: if predicted return > entryThreshold -> buy
-    if(!position && p>entryThreshold){ position = balance*(1-fee); entryPrice = price*(1+slippage); trades.push({type:'buy',time:STATE.candles[i].time,price:entryPrice}); }
-    else if(position){ // exit if predicted negative or profit target
-      const ret = (price-entryPrice)/entryPrice;
-      if(p< -exitThreshold || ret>0.02){ const exitPrice = price*(1-slippage); balance = (position/entryPrice) * exitPrice * (1-fee); trades.push({type:'sell',time:STATE.candles[i].time,price:exitPrice}); position=0; }
+function RSI(values, period=14){
+  let rsis = [];
+  for(let i=0;i<values.length;i++){
+    if(i<period){ rsis.push(50); continue; }
+    let gain=0, loss=0;
+    for(let j=i-period+1;j<=i;j++){
+      let diff = values[j]-values[j-1];
+      if(diff>0) gain+=diff; else loss-=diff;
     }
+    let rs = gain/(loss||1);
+    rsis.push(100-100/(1+rs));
   }
-  // metrics
-  const returns = []; let equity=1; for(const t of trades){ if(t.type==='sell'){ /* simplified*/ } }
-  const report = {tradesCount:trades.length, finalBalance:balance}; document.getElementById('backtestReport').innerText = JSON.stringify(report,null,2);
+  return rsis;
+}
+function MACD(values, fast=12, slow=26, signal=9){
+  let emaFast = EMA(values, fast);
+  let emaSlow = EMA(values, slow);
+  let macd = emaFast.map((v,i)=>v-emaSlow[i]);
+  let signalLine = EMA(macd, signal);
+  return { macd, signalLine };
 }
 
-function predictAll(featureArray){ // use ensemble of mlp+lstm+cnn average
-  const models = STATE.models; const tensors = tf.tensor(featureArray); const seq = tensors.reshape([tensors.shape[0], tensors.shape[1], 1]);
-  const p1 = models.mlp.predict(tensors).dataSync(); const p2 = models.lstm.predict(seq).dataSync(); const p3 = models.cnn.predict(seq).dataSync(); tensors.dispose(); seq.dispose();
-  const out = []; for(let i=0;i<p1.length;i++){ out.push( (p1[i] + p2[i] + p3[i])/3 ); } return out;
+/************* Feature Update & Signals *************/
+function updateIndicators(){
+  const closes = candles.map(c=>c.close);
+  indicators.EMA = EMA(closes, 20);
+  indicators.SMA = SMA(closes, 20);
+  indicators.RSI = RSI(closes, 14);
+  const macdObj = MACD(closes);
+  indicators.MACD = macdObj.macd;
+  indicators.MACDSignal = macdObj.signalLine;
 }
 
-// ----------------------------- Signals and UI hooks -----------------------------
-function addSignalRow(time,type,price,reason){ const tbody = document.querySelector('#signalsTable tbody'); const tr = document.createElement('tr'); tr.innerHTML = `<td>${new Date(time).toLocaleString()}</td><td class="signal-${type}">${type.toUpperCase()}</td><td>${price.toFixed(6)}</td><td>${reason}</td>`; tbody.prepend(tr); }
-
-// ----------------------------- Event wiring -----------------------------
-document.getElementById('connectBtn').onclick = ()=>{ connectWS('wifusdt'); }
-document.getElementById('fetchHistoric').onclick = ()=>{ fetchHistoric('WIFUSDT', document.getElementById('interval').value, 1200); }
-document.getElementById('trainBtn').onclick = ()=>{ trainModels(); }
-document.getElementById('backtestBtn').onclick = ()=>{ runBacktest({}); }
-
-// API key testing
-document.getElementById('testAPIs').onclick = async ()=>{
-  const w = document.getElementById('whaleKey').value.trim();
-  if(w){ try{ const r = await fetch(`https://api.whale-alert.io/v1/transactions?api_key=${w}&limit=1`); const j = await r.json(); alert('Whale key test returned: '+(j.transactions? 'OK': JSON.stringify(j))); }catch(e){ alert('Whale test failed: '+e.message) } }
-  const bq = document.getElementById('bitqueryKey').value.trim(); if(bq){ alert('Bitquery/Covalent key present — use in on-chain fetch code (no server provided).') }
+function generateSignals(){
+  const len = candles.length;
+  if(len<2) return;
+  const lastPrice = candles[len-1].close;
+  const ema = indicators.EMA[len-1];
+  const rsi = indicators.RSI[len-1];
+  let signal = "";
+  if(lastPrice>ema && rsi<70) signal="BUY";
+  if(lastPrice<ema && rsi>30) signal="SELL";
+  signals.push({ time: candles[len-1].time, price:lastPrice, type: signal });
 }
 
-// init
-(async ()=>{ await idb.init(); document.getElementById('modelsStatus').innerText='Ready. Fetch historic data to start.' })();
+/************* Chart *************/
+const chart = LightweightCharts.createChart(document.getElementById('chart'), { width: window.innerWidth, height:600, layout: { background: { color:'#0f0f0f'}, textColor:'#fff' }, grid:{ vertLines:{ color:'#444' }, horzLines:{color:'#444'} }});
+const candleSeries = chart.addCandlestickSeries();
+let emaSeries = chart.addLineSeries({ color:'yellow', visible:true });
+let smaSeries = chart.addLineSeries({ color:'orange', visible:true });
+let macdSeries = chart.addLineSeries({ color:'cyan', visible:true });
+let buySellSeries = chart.addScatterSeries({ color:'green', shape:'arrowUp', visible:true });
 
+function updateChart(){
+  candleSeries.setData(candles.map(c=>({ time:c.time/1000, open:c.open, high:c.high, low:c.low, close:c.close })));
+  emaSeries.setData(indicators.EMA.map((v,i)=>({ time:candles[i].time/1000, value:v })));
+  smaSeries.setData(indicators.SMA.map((v,i)=>({ time:candles[i].time/1000, value:v })));
+  macdSeries.setData(indicators.MACD.map((v,i)=>({ time:candles[i].time/1000, value:v })));
+  buySellSeries.setData(signals.filter(s=>s.type!=="").map(s=>({ time:s.time/1000, value:s.price })));
+}
+
+/************* Toggle Series *************/
+function toggleSeries(name){
+  switch(name){
+    case 'EMA': emaSeries.applyOptions({ visible: !emaSeries.options().visible }); break;
+    case 'SMA': smaSeries.applyOptions({ visible: !smaSeries.options().visible }); break;
+    case 'MACD': macdSeries.applyOptions({ visible: !macdSeries.options().visible }); break;
+    case 'BuySell': buySellSeries.applyOptions({ visible: !buySellSeries.options().visible }); break;
+  }
+}
+
+/************* Trade Table *************/
+function updateTable(){
+  const tbody = document.getElementById('trade-body');
+  tbody.innerHTML = "";
+  trades.slice(-20).forEach(tr=>{
+    const sig = signals.find(s=>s.time===tr.time);
+    const trEl = document.createElement('tr');
+    trEl.innerHTML = `<td>${new Date(tr.time).toLocaleTimeString()}</td><td>${tr.price}</td><td>${tr.qty}</td><td>${sig?sig.type:""}</td>`;
+    tbody.appendChild(trEl);
+  });
+}
+
+/************* MLP Training *************/
+let mlpModel=null;
+function trainMLP(){
+  const closes = candles.map(c=>c.close);
+  if(closes.length<60) return alert("Need more candles to train");
+  const X = [];
+  const y = [];
+  for(let i=60;i<closes.length;i++){
+    X.push(closes.slice(i-60,i));
+    y.push(closes[i]);
+  }
+  const Xtensor = tf.tensor2d(X);
+  const ytensor = tf.tensor2d(y, [y.length,1]);
+  mlpModel = tf.sequential();
+  mlpModel.add(tf.layers.dense({ units:64, activation:'relu', inputShape:[60] }));
+  mlpModel.add(tf.layers.dense({ units:32, activation:'relu' }));
+  mlpModel.add(tf.layers.dense({ units:1 }));
+  mlpModel.compile({ optimizer:'adam', loss:'meanSquaredError' });
+  mlpModel.fit(Xtensor, ytensor, { epochs:20 }).then(()=>{
+    alert("MLP trained!");
+  });
+}
 </script>
 </body>
 </html>
