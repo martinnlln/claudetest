@@ -1,488 +1,314 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>WIF/USDT Price Predictor</title>
-    <style>
-        body { font-family: Arial; }
-        #chart { width: 100%; height: 600px; }
-        #toggles { margin: 10px; }
-        #trades-table { margin: 10px; border-collapse: collapse; }
-        #trades-table th, td { border: 1px solid #ddd; padding: 8px; }
-        #metrics { margin: 10px; }
-    </style>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://unpkg.com/technicalindicators/dist/browser.es6.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WIF/USDT Browser ML Price Predictor</title>
+  <style>
+    :root{--bg:#0b1220;--card:#0f1724;--accent:#06f;--muted:#9aa7c7}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI, Roboto, Arial;color:#e6eef8;background:linear-gradient(180deg,#041022 0%, #071025 100%)}
+    .app{display:grid;grid-template-columns:1fr 420px;gap:12px;padding:12px;height:100%}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:10px;padding:12px;box-shadow:0 6px 24px rgba(2,6,23,0.6);}
+    header{display:flex;gap:12px;align-items:center}
+    h1{margin:0;font-size:18px}
+    .left{display:flex;flex-direction:column;gap:12px}
+    #chart{height:520px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .controls input[type=text], .controls input[type=number], select{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px;border-radius:6px;color:var(--muted)}
+    .toggles{display:flex;gap:6px;flex-wrap:wrap}
+    .btn{background:var(--accent);border:none;color:#03101a;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .sidebar{display:flex;flex-direction:column;gap:10px;height:100%}
+    .fill{flex:1;overflow:auto}
+    table{width:100%;border-collapse:collapse;color:var(--muted)}
+    th,td{padding:6px;border-bottom:1px dashed rgba(255,255,255,0.02);font-size:13px}
+    .small{font-size:12px;color:rgba(255,255,255,0.6)}
+    .signal-buy{color:#00ff99}
+    .signal-sell{color:#ff6b6b}
+    .chip{padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:8px}
+  </style>
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-    <div id="chart"></div>
-    <div id="toggles">
-        <label><input type="checkbox" id="toggle-ema" checked> EMA</label>
-        <label><input type="checkbox" id="toggle-sma" checked> SMA</label>
-        <label><input type="checkbox" id="toggle-macd" checked> MACD</label>
-        <label><input type="checkbox" id="toggle-rsi" checked> RSI</label>
-        <label><input type="checkbox" id="toggle-atr" checked> ATR</label>
-        <label><input type="checkbox" id="toggle-bollinger" checked> Bollinger Bands</label>
-        <label><input type="checkbox" id="toggle-vwap" checked> VWAP</label>
-        <label><input type="checkbox" id="toggle-obv" checked> OBV</label>
-        <label><input type="checkbox" id="toggle-chaikin" checked> Chaikin</label>
-        <label><input type="checkbox" id="toggle-models" checked> Model Predictions</label>
+  <div class="app">
+    <div class="left card">
+      <header>
+        <div>
+          <h1>WIF/USDT — Browser ML Price Predictor</h1>
+          <div class="small">Live: Binance WS | On-chain & whale inputs | Train & backtest in-browser (TF.js)</div>
+        </div>
+        <div style="margin-left:auto" class="chip">IndexedDB storage • WebWorker training</div>
+      </header>
+
+      <div class="controls">
+        <label class="small">Kline interval:
+          <select id="interval">
+            <option value="1m">1m</option>
+            <option value="3m">3m</option>
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+        </label>
+        <label class="small">Window size:
+          <input id="windowSize" type="number" min="8" max="1024" value="60" style="width:80px" />
+        </label>
+        <button id="connectBtn" class="btn">Connect Live</button>
+        <button id="fetchHistoric" class="btn">Fetch Historic</button>
+        <button id="trainBtn" class="btn">Train Models</button>
+        <button id="backtestBtn" class="btn">Backtest</button>
+      </div>
+
+      <div id="chart" class="card"></div>
+
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="toggles">
+          <label class="chip"><input type="checkbox" id="showEMA" checked> EMA</label>
+          <label class="chip"><input type="checkbox" id="showRSI"> RSI</label>
+          <label class="chip"><input type="checkbox" id="showMACD"> MACD</label>
+          <label class="chip"><input type="checkbox" id="showVWAP"> VWAP</label>
+          <label class="chip"><input type="checkbox" id="showOBV"> OBV</label>
+        </div>
+        <div style="margin-left:auto" class="small">Signals: <span id="signalNow">—</span></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h3 style="margin:6px 0">Model Training & Status</h3>
+        <div id="modelsStatus" class="small">No models trained yet.</div>
+        <div style="margin-top:8px" id="modelMetrics" class="small"></div>
+      </div>
     </div>
-    <table id="trades-table">
-        <thead><tr><th>Time</th><th>Entry Price</th><th>Exit Price</th><th>Direction</th><th>Profit/Loss</th><th>Setup</th></tr></thead>
-        <tbody></tbody>
-    </table>
-    <div id="metrics"></div>
 
-    <script>
-        const SYMBOL = 'WIFUSDT';
-        const TOKEN_MINT = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm';
-        const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
+    <aside class="sidebar card">
+      <div>
+        <h3 style="margin:0 0 8px 0">Data / API Keys</h3>
+        <div class="small">Paste API keys for paid providers (kept in-browser only). For production, run a signed proxy.</div>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <input id="whaleKey" placeholder="Whale Alert API Key (optional)" />
+          <input id="bitqueryKey" placeholder="Bitquery / Covalent API Key (optional)" />
+          <button id="testAPIs" class="btn">Test Keys</button>
+        </div>
+      </div>
 
-        let chart, candleSeries;
-        let indicatorSeries = {};
-        let indicatorsData = {};
-        let data = []; // {time, open, high, low, close, volume}
-        let features = []; // Array of feature objects
-        let models = {};
-        let signals = [];
-        let trades = [];
-        let metrics = { mse: 0, mae: 0, accuracy: 0, sharpe: 0, drawdown: 0 };
+      <div class="fill card" style="margin-top:8px">
+        <h3 style="margin:0 0 8px 0">Signals & Trades (table)</h3>
+        <table id="signalsTable"><thead><tr><th>Time</th><th>Type</th><th>Price</th><th>Reason</th></tr></thead><tbody></tbody></table>
+      </div>
 
-        async function init() {
-            chart = LightweightCharts.createChart(document.getElementById('chart'), { width: window.innerWidth, height: 600 });
-            candleSeries = chart.addCandlestickSeries();
-            setupToggles();
-            await loadModels();
-            connectWebSocket();
-            await fetchHistorical();
-            engineerFeatures();
-            await updateData(); // Initial update
-            await trainModels();
-            backtest();
-            updateChart();
-            updateMetrics();
-            setInterval(updateData, 60000);
-            setInterval(predictAndSignal, 60000);
-        }
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Backtest Report</h3>
+        <div id="backtestReport" class="small">No backtest run yet.</div>
+      </div>
 
-        function setupToggles() {
-            ['ema', 'sma', 'macd', 'rsi', 'atr', 'bollinger', 'vwap', 'obv', 'chaikin', 'models'].forEach(id => {
-                document.getElementById(`toggle-${id}`).addEventListener('change', updateChart);
-            });
-        }
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Notes</h3>
+        <div class="small">• API keys are stored in localStorage only. • For paid endpoints use a backend proxy.</div>
+      </div>
+    </aside>
+  </div>
 
-        async function fetchHistorical() {
-            const klines = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=1m&limit=1000`).then(res => res.json());
-            data = klines.map(k => ({ time: Math.floor(k[0]/1000), open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
-            candleSeries.setData(data);
-        }
+<script>
+// ----------------------------- Utilities & storage -----------------------------
+const STATE = {
+  candles: [], // {time, open, high, low, close, volume}
+  trades: [], // trade stream records
+  depth: null,
+  features: [], // feature vectors per candle
+  labels: [],
+  models: {},
+  indicators: {},
+}
 
-        function connectWebSocket() {
-            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@kline_1m`);
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.k) {
-                    const k = msg.k;
-                    const candle = { time: Math.floor(k.t/1000), open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c), volume: parseFloat(k.v) };
-                    const last = data[data.length - 1];
-                    if (candle.time === last.time) {
-                        data[data.length - 1] = candle;
-                        candleSeries.update(candle);
-                    } else {
-                        data.push(candle);
-                        candleSeries.update(candle);
-                    }
-                    engineerFeatures();
-                    updateChart();
-                }
-            };
-        }
+// small IndexedDB helper (promisified)
+const idb = {
+  db: null,
+  async init(){
+    return new Promise((res, rej)=>{
+      const r = indexedDB.open('wif-predictor',1);
+      r.onupgradeneeded = ()=>{ r.result.createObjectStore('candles',{keyPath:'time'}); r.result.createObjectStore('meta'); };
+      r.onsuccess = ()=>{ this.db = r.result; res(); }
+      r.onerror = e=>rej(e);
+    });
+  },
+  put(store, val){ return new Promise((res,rej)=>{ const tx = this.db.transaction(store,'readwrite'); tx.objectStore(store).put(val).onsuccess = ()=>res(); tx.onerror = e=>rej(e); }); },
+  getAll(store){ return new Promise((res,rej)=>{ const tx = this.db.transaction(store,'readonly'); const req = tx.objectStore(store).getAll(); req.onsuccess = ()=>res(req.result); req.onerror = e=>rej(e); }); }
+}
 
-        async function updateData() {
-            const depth = await fetch(`https://api.binance.com/api/v3/depth?symbol=${SYMBOL}&limit=100`).then(res => res.json());
-            const tradesRecent = await fetch(`https://api.binance.com/api/v3/trades?symbol=${SYMBOL}&limit=1000`).then(res => res.json());
-            const coingecko = await fetch('https://api.coingecko.com/api/v3/coins/dogwifhat/market_chart?vs_currency=usd&days=1&interval=minute').then(res => res.json());
+// ----------------------------- Indicators -----------------------------
+function sma(arr, period){ if(arr.length<period) return null; let s=0; for(let i=arr.length-period;i<arr.length;i++)s+=arr[i]; return s/period }
+function ema(prevEma, price, period){ const k = 2/(period+1); return prevEma===null?price:price*k + prevEma*(1-k) }
+function rsi(closes, period=14){ if(closes.length<=period) return null; let gains=0,loss=0; for(let i=closes.length-period;i<closes.length;i++){ const d = closes[i]-closes[i-1]; if(d>0) gains+=d; else loss-=d } const rs = (gains/period)/(loss/period||1e-9); return 100 - (100/(1+rs)); }
+function macd(closes, short=12,long=26,signal=9){ if(closes.length<long) return null; let emaS=null, emaL=null; for(let i=0;i<closes.length;i++){ emaS = ema(emaS, closes[i], short); emaL = ema(emaL, closes[i], long); } const macdLine = emaS - emaL; // signal
+ // compute signal using last `signal` macd points (approx)
+ return {macd:macdLine}; }
+function vwap(candles){ let pv=0, v=0; for(const c of candles){ const typical = (c.high + c.low + c.close)/3; pv += typical * c.volume; v += c.volume } return v? pv/v : null }
+function obv(candles){ if(candles.length==0) return 0; let val=0; for(let i=1;i<candles.length;i++){ if(candles[i].close>candles[i-1].close) val+=candles[i].volume; else if(candles[i].close<candles[i-1].close) val-=candles[i].volume } return val }
+function atr(candles, period=14){ if(candles.length<=period) return null; let trs=[]; for(let i=1;i<candles.length;i++){ const hi=candles[i].high, lo=candles[i].low, prev=candles[i-1].close; trs.push(Math.max(hi-lo, Math.abs(hi-prev), Math.abs(lo-prev))); } let sum=0; for(let i=trs.length-period;i<trs.length;i++) sum+=trs[i]; return sum/period }
 
-            const whales = {transactions: []}; // No public API without key
+// microstructure features using stored depth/trades
+function depthImbalance(depth){ if(!depth) return 0; const bids = depth.bids.slice(0,10).reduce((s,[p,q])=>s+q,0); const asks = depth.asks.slice(0,10).reduce((s,[p,q])=>s+q,0); return (bids-asks)/(bids+asks||1) }
 
-            const holdersRes = await fetch(SOLANA_RPC, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenLargestAccounts', params: [TOKEN_MINT, {commitment: 'finalized'}] })
-            }).then(res => res.json());
-            const holders = holdersRes.result ? holdersRes.result.value : [];
+// composite signals
+function whalePressureIndex(meta){ // simplistic composite—user can extend
+  return (meta.exchangeInflows||0) - (meta.exchangeOutflows||0);
+}
 
-            const reddit = await fetch('https://www.reddit.com/search.json?q=WIF%20cryptocurrency&sort=new&limit=100').then(res => res.json() || {data: {children: []}});
+// ----------------------------- Lightweight-charts UI -----------------------------
+const chartContainer = document.getElementById('chart');
+const chart = LightweightCharts.createChart(chartContainer, {layout:{background:'#071025',textColor:'#cfe8ff'},timeScale:{rightOffset:12,barSpacing:8}});
+const candleSeries = chart.addCandlestickSeries({upColor:'#00b894',downColor:'#ff7675',borderVisible:false,wickUpColor:'#00b894',wickDownColor:'#ff7675'});
+const emaSeries = chart.addLineSeries({color:'#f6e58d',lineWidth:1});
+const vwapSeries = chart.addLineSeries({color:'#6c5ce7',lineWidth:1});
+const signalMarkers = [];
 
-            const trends = {interest_over_time: {timeline_data: [{values: [0]}]}}; // No public API without key
+function drawCandles(){ const data = STATE.candles.map(c=>({time: Math.floor(c.time/1000), open:c.open, high:c.high, low:c.low, close:c.close})); candleSeries.setData(data); }
 
-            const latestFeature = {
-                bidAskSpread: parseFloat(depth.asks[0][0]) - parseFloat(depth.bids[0][0]),
-                depthImbalance: calculateDepthImbalance(depth),
-                tradeImbalance: calculateTradeImbalance(tradesRecent),
-                timeBetweenTrades: calculateTimeBetweenTrades(tradesRecent),
-                exchangeInflow: calculateExchangeInflow(whales.transactions),
-                exchangeOutflow: calculateExchangeOutflow(whales.transactions),
-                topHolderConcentration: calculateTopHolderConcentration(holders),
-                tokenVelocity: calculateTokenVelocity(whales.transactions),
-                mintBurn: calculateMintBurn(whales.transactions),
-                lpEvents: calculateLpEvents(whales.transactions),
-                socialSentiment: analyzeSocialSentiment(reddit.data.children),
-                trendsScore: trends.interest_over_time.timeline_data.length > 0 ? trends.interest_over_time.timeline_data[0].values[0] : 0
-            };
+function addSignalMarker(time, price, type, text){ const marker = {time: Math.floor(time/1000), position: type==='buy'?'belowBar':'aboveBar', color: type==='buy'?'#00ff99':'#ff6b6b',shape:'arrow'+(type==='buy'?'Up':'Down'), text }; candleSeries.applyOptions({}); candleSeries.setMarkers([ ...(candleSeries.getMarkers?candleSeries.getMarkers():[]), marker ]); }
 
-            latestFeature.whalePressure = calculateWhalePressure(latestFeature);
-            latestFeature.liquidityAlarm = calculateLiquidityAlarm(latestFeature);
-            latestFeature.holderCohortMomentum = calculateHolderCohortMomentum(holders);
-            latestFeature.memeMomentum = calculateMemeMomentum(latestFeature);
+// ----------------------------- Binance Data (REST + WS) -----------------------------
+let binanceWS=null;
+async function fetchHistoric(symbol='WIFUSDT', interval='1m', limit=1000){
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const res = await fetch(url); const arr = await res.json();
+  // arr: [openTime, open, high, low, close, volume, closeTime, ...]
+  STATE.candles = arr.map(a=>({time:a[0], open:parseFloat(a[1]), high:parseFloat(a[2]), low:parseFloat(a[3]), close:parseFloat(a[4]), volume:parseFloat(a[5])}));
+  computeAllFeatures(); drawCandles(); console.log('historic loaded', STATE.candles.length);
+}
 
-            features.push(latestFeature);
-        }
+function connectWS(symbol='wifusdt'){
+  if(binanceWS) binanceWS.close();
+  binanceWS = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@kline_1m`);
+  binanceWS.onmessage = e=>{
+    const d = JSON.parse(e.data);
+    if(d.k){ const k = d.k; const candle = {time:k.t, open:parseFloat(k.o), high:parseFloat(k.h), low:parseFloat(k.l), close:parseFloat(k.c), volume:parseFloat(k.v)}; upsertCandle(candle); }
+  }
+  binanceWS.onopen = ()=>console.log('binance ws open');
+  binanceWS.onclose = ()=>console.log('binance ws closed');
+}
+function upsertCandle(c){ const last = STATE.candles[STATE.candles.length-1]; if(!last || c.time>last.time) STATE.candles.push(c); else STATE.candles[STATE.candles.length-1]=c; computeAllFeatures(); drawCandles(); }
 
-        function engineerFeatures() {
-            const TI = technicalindicators;
-            const closes = data.map(d => d.close);
-            const highs = data.map(d => d.high);
-            const lows = data.map(d => d.low);
-            const volumes = data.map(d => d.volume);
-            const period14 = 14;
-            const period20 = 20;
-            const period12 = 12;
-            const period26 = 26;
-            const period9 = 9;
-            const period21 = 21;
+// ----------------------------- Feature pipeline -----------------------------
+function computeAllFeatures(){
+  const closes = STATE.candles.map(c=>c.close);
+  const highs = STATE.candles.map(c=>c.high);
+  const lows = STATE.candles.map(c=>c.low);
+  STATE.indicators.ema20 = computeEMAArray(closes,20);
+  STATE.indicators.ema50 = computeEMAArray(closes,50);
+  STATE.indicators.rsi14 = closes.map((_,i)=> i>0 ? rsi(closes.slice(0,i+1),14):null);
+  STATE.indicators.vwap = vwap(STATE.candles.slice(-50));
+  STATE.indicators.obv = obv(STATE.candles);
+  // prepare feature vectors (sliding windows)
+  const window = parseInt(document.getElementById('windowSize').value||60);
+  STATE.features = [];
+  for(let i=window;i<STATE.candles.length-1;i++){
+    const slice = STATE.candles.slice(i-window,i);
+    const vec = [];
+    // normalized price series
+    const base = slice[slice.length-1].close;
+    for(const s of slice){ vec.push((s.close-base)/base); }
+    // add indicators at i
+    vec.push((STATE.indicators.ema20[i]||0 - base)/base || 0);
+    vec.push((STATE.indicators.ema50[i]||0 - base)/base || 0);
+    vec.push((STATE.indicators.rsi14[i]||0)/100);
+    vec.push((STATE.indicators.obv||0)/1e6);
+    // microstructure placeholders (depth imbalance)
+    vec.push(depthImbalance(STATE.depth)||0);
+    STATE.features.push(vec);
+  }
+  // labels: next return
+  STATE.labels = [];
+  for(let i=window;i<STATE.candles.length-1;i++){
+    const next = STATE.candles[i+1].close; const now = STATE.candles[i].close; STATE.labels.push((next-now)/now);
+  }
+  // update EMA overlay
+  const emaPath = STATE.candles.map((c, idx)=>({time:Math.floor(c.time/1000), value: STATE.indicators.ema20[idx]||null})).filter(x=>x.value!==null);
+  emaSeries.setData(emaPath);
+  vwapSeries.setData(STATE.candles.map((c,idx)=>({time:Math.floor(c.time/1000), value:STATE.indicators.vwap||null})).filter(x=>x.value!==null));
+}
+function computeEMAArray(arr, period){ const out=[]; let prev=null; for(let i=0;i<arr.length;i++){ prev = ema(prev, arr[i], period); out.push(prev); } return out }
 
-            indicatorsData.ema = new TI.EMA({ period: period12, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.sma = new TI.SMA({ period: period20, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.macd = new TI.MACD({ values: closes, fastPeriod: period12, slowPeriod: period26, signalPeriod: period9 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, MACD: v.MACD, signal: v.signal, histogram: v.histogram }));
-            indicatorsData.rsi = new TI.RSI({ period: period14, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.atr = new TI.ATR({ high: highs, low: lows, close: closes, period: period14 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.bollinger = new TI.BollingerBands({ period: period20, stdDev: 2, values: closes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, middle: v.middle, upper: v.upper, lower: v.lower }));
-            indicatorsData.vwap = calculateVWAP(highs, lows, closes, volumes).map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.obv = new TI.OBV({ close: closes, volume: volumes }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-            indicatorsData.chaikin = new TI.ChaikinMoneyFlow({ high: highs, low: lows, close: closes, volume: volumes, period: period21 }).result.map((v, i) => ({ time: data[i] ? data[i].time : 0, value: v }));
-        }
+// ----------------------------- Models (TF.js) -----------------------------
+function makeBaseline(inputShape){ const model = tf.sequential(); model.add(tf.layers.flatten({inputShape})); model.add(tf.layers.dense({units:1, useBias:true})); model.compile({loss:'meanSquaredError', optimizer:tf.train.adam(0.01)}); return model }
+function makeMLP(inputShape){ const model = tf.sequential(); model.add(tf.layers.flatten({inputShape})); model.add(tf.layers.dense({units:128,activation:'relu'})); model.add(tf.layers.dropout({rate:0.2})); model.add(tf.layers.dense({units:64,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError', optimizer:tf.train.adam(0.001)}); return model }
+function makeLSTM(inputShape){ const model = tf.sequential(); model.add(tf.layers.lstm({units:64,returnSequences:false,inputShape})); model.add(tf.layers.dense({units:32,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError',optimizer:tf.train.adam(0.001)}); return model }
+function makeCNN1D(inputShape){ const model = tf.sequential(); model.add(tf.layers.conv1d({filters:32,kernelSize:3,activation:'relu',inputShape})); model.add(tf.layers.maxPooling1d({poolSize:2})); model.add(tf.layers.flatten()); model.add(tf.layers.dense({units:32,activation:'relu'})); model.add(tf.layers.dense({units:1})); model.compile({loss:'meanSquaredError',optimizer:tf.train.adam(0.001)}); return model }
 
-        function calculateVWAP(highs, lows, closes, volumes) {
-            let vwap = [];
-            let cumVolume = 0;
-            let cumTypicalVolume = 0;
-            for (let i = 0; i < closes.length; i++) {
-                const typical = (highs[i] + lows[i] + closes[i]) / 3;
-                cumTypicalVolume += typical * volumes[i];
-                cumVolume += volumes[i];
-                vwap.push(cumTypicalVolume / cumVolume || 0);
-            }
-            return vwap;
-        }
+async function trainModels(){
+  if(STATE.features.length===0){ alert('No feature data — fetch historic first'); return; }
+  document.getElementById('modelsStatus').innerText = 'Preparing tensors...';
+  const X = tf.tensor(STATE.features); const y = tf.tensor(STATE.labels).reshape([STATE.labels.length,1]);
+  const inputShape = X.shape.slice(1);
+  // baseline
+  const baseline = makeBaseline(inputShape); document.getElementById('modelsStatus').innerText = 'Training baseline...';
+  await baseline.fit(X,y,{epochs:20,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`Baseline epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
+  // mlp
+  const mlp = makeMLP(inputShape); document.getElementById('modelsStatus').innerText = 'Training MLP...';
+  await mlp.fit(X,y,{epochs:30,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`MLP epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
+  // LSTM (requires 3D)
+  let Xseq = X.reshape([X.shape[0], X.shape[1], 1]);
+  const lstm = makeLSTM([Xseq.shape[1], Xseq.shape[2]]); document.getElementById('modelsStatus').innerText = 'Training LSTM...';
+  await lstm.fit(Xseq,y,{epochs:25,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`LSTM epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
 
-        async function loadModels() {
-            const featureDim = 16; // bidAskSpread, depthImbalance, tradeImbalance, timeBetweenTrades, exchangeInflow, exchangeOutflow, topHolderConcentration, tokenVelocity, mintBurn, lpEvents, socialSentiment, trendsScore, whalePressure, liquidityAlarm, holderCohortMomentum, memeMomentum
-            const timeSteps = 60;
+  // CNN
+  const Xcnn = Xseq; const cnn = makeCNN1D([Xcnn.shape[1], Xcnn.shape[2]]); document.getElementById('modelsStatus').innerText='Training CNN...';
+  await cnn.fit(Xcnn,y,{epochs:20,batchSize:32,callbacks:{onEpochEnd:(e,logs)=>document.getElementById('modelsStatus').innerText=`CNN epoch ${e+1}: loss=${logs.loss.toFixed(6)}`}});
 
-            models.linear = tf.sequential();
-            models.linear.add(tf.layers.dense({ units: 1, inputShape: [featureDim] }));
-            models.linear.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+  // save models in memory
+  STATE.models = {baseline, mlp, lstm, cnn};
+  document.getElementById('modelsStatus').innerText = 'Models trained: baseline, mlp, lstm, cnn';
+  // store minimal metadata
+  await idb.put('meta', {key:'models', value:Object.keys(STATE.models)});
+  X.dispose(); y.dispose(); Xseq.dispose();
+}
 
-            models.mlp = tf.sequential();
-            models.mlp.add(tf.layers.dense({ units: 128, activation: 'relu', inputShape: [featureDim] }));
-            models.mlp.add(tf.layers.dense({ units: 64, activation: 'relu' }));
-            models.mlp.add(tf.layers.dense({ units: 1 }));
-            models.mlp.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+// ----------------------------- Simple backtester -----------------------------
+function runBacktest({entryThreshold=0.001,exitThreshold=0.0005,slippage=0.0005,fee=0.001}){
+  if(!STATE.models.mlp) { alert('Train models first'); return; }
+  const preds = predictAll(STATE.features);
+  let balance=1, position=0, entryPrice=0; const trades=[]; const prices = STATE.candles.slice(-preds.length-1).map(c=>c.close);
+  for(let i=0;i<preds.length;i++){
+    const p = preds[i]; const price = prices[i];
+    // simple strategy: if predicted return > entryThreshold -> buy
+    if(!position && p>entryThreshold){ position = balance*(1-fee); entryPrice = price*(1+slippage); trades.push({type:'buy',time:STATE.candles[i].time,price:entryPrice}); }
+    else if(position){ // exit if predicted negative or profit target
+      const ret = (price-entryPrice)/entryPrice;
+      if(p< -exitThreshold || ret>0.02){ const exitPrice = price*(1-slippage); balance = (position/entryPrice) * exitPrice * (1-fee); trades.push({type:'sell',time:STATE.candles[i].time,price:exitPrice}); position=0; }
+    }
+  }
+  // metrics
+  const returns = []; let equity=1; for(const t of trades){ if(t.type==='sell'){ /* simplified*/ } }
+  const report = {tradesCount:trades.length, finalBalance:balance}; document.getElementById('backtestReport').innerText = JSON.stringify(report,null,2);
+}
 
-            models.lstm = tf.sequential();
-            models.lstm.add(tf.layers.lstm({ units: 64, returnSequences: true, inputShape: [timeSteps, featureDim] }));
-            models.lstm.add(tf.layers.lstm({ units: 32 }));
-            models.lstm.add(tf.layers.dense({ units: 1 }));
-            models.lstm.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+function predictAll(featureArray){ // use ensemble of mlp+lstm+cnn average
+  const models = STATE.models; const tensors = tf.tensor(featureArray); const seq = tensors.reshape([tensors.shape[0], tensors.shape[1], 1]);
+  const p1 = models.mlp.predict(tensors).dataSync(); const p2 = models.lstm.predict(seq).dataSync(); const p3 = models.cnn.predict(seq).dataSync(); tensors.dispose(); seq.dispose();
+  const out = []; for(let i=0;i<p1.length;i++){ out.push( (p1[i] + p2[i] + p3[i])/3 ); } return out;
+}
 
-            models.gru = tf.sequential();
-            models.gru.add(tf.layers.gru({ units: 64, returnSequences: true, inputShape: [timeSteps, featureDim] }));
-            models.gru.add(tf.layers.gru({ units: 32 }));
-            models.gru.add(tf.layers.dense({ units: 1 }));
-            models.gru.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+// ----------------------------- Signals and UI hooks -----------------------------
+function addSignalRow(time,type,price,reason){ const tbody = document.querySelector('#signalsTable tbody'); const tr = document.createElement('tr'); tr.innerHTML = `<td>${new Date(time).toLocaleString()}</td><td class="signal-${type}">${type.toUpperCase()}</td><td>${price.toFixed(6)}</td><td>${reason}</td>`; tbody.prepend(tr); }
 
-            models.cnn = tf.sequential();
-            models.cnn.add(tf.layers.conv1d({ filters: 32, kernelSize: 5, activation: 'relu', inputShape: [timeSteps, featureDim] }));
-            models.cnn.add(tf.layers.maxPooling1d({ poolSize: 2 }));
-            models.cnn.add(tf.layers.flatten());
-            models.cnn.add(tf.layers.dense({ units: 1 }));
-            models.cnn.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+// ----------------------------- Event wiring -----------------------------
+document.getElementById('connectBtn').onclick = ()=>{ connectWS('wifusdt'); }
+document.getElementById('fetchHistoric').onclick = ()=>{ fetchHistoric('WIFUSDT', document.getElementById('interval').value, 1200); }
+document.getElementById('trainBtn').onclick = ()=>{ trainModels(); }
+document.getElementById('backtestBtn').onclick = ()=>{ runBacktest({}); }
 
-            models.transformer = buildTransformerModel(timeSteps, featureDim);
-            models.transformer.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+// API key testing
+document.getElementById('testAPIs').onclick = async ()=>{
+  const w = document.getElementById('whaleKey').value.trim();
+  if(w){ try{ const r = await fetch(`https://api.whale-alert.io/v1/transactions?api_key=${w}&limit=1`); const j = await r.json(); alert('Whale key test returned: '+(j.transactions? 'OK': JSON.stringify(j))); }catch(e){ alert('Whale test failed: '+e.message) } }
+  const bq = document.getElementById('bitqueryKey').value.trim(); if(bq){ alert('Bitquery/Covalent key present — use in on-chain fetch code (no server provided).') }
+}
 
-            models.autoencoder = buildAutoencoder(featureDim);
-            models.autoencoder.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
+// init
+(async ()=>{ await idb.init(); document.getElementById('modelsStatus').innerText='Ready. Fetch historic data to start.' })();
 
-            models.ensemble = { predict: async (x) => {
-                const preds = await Promise.all([models.linear, models.mlp, models.lstm, models.gru, models.cnn, models.transformer].map(m => m.predict(x)));
-                return tf.mean(tf.stack(preds), 0);
-            }};
-        }
-
-        function buildTransformerModel(timeSteps, featureDim) {
-            const input = tf.input({ shape: [timeSteps, featureDim] });
-            let x = tf.layers.multiHeadAttention({ numHeads: 4, keyDim: 64 }).apply([input, input]);
-            x = tf.layers.layerNormalization().apply(x);
-            x = tf.layers.dense({ units: featureDim, activation: 'relu' }).apply(x);
-            x = tf.layers.globalAveragePooling1d().apply(x);
-            const output = tf.layers.dense({ units: 1 }).apply(x);
-            return tf.model({ inputs: input, outputs: output });
-        }
-
-        function buildAutoencoder(featureDim) {
-            const input = tf.input({ shape: [featureDim] });
-            let x = tf.layers.dense({ units: 32, activation: 'relu' }).apply(input);
-            x = tf.layers.dense({ units: 16, activation: 'relu' }).apply(x);
-            x = tf.layers.dense({ units: 32, activation: 'relu' }).apply(x);
-            const output = tf.layers.dense({ units: featureDim }).apply(x);
-            return tf.model({ inputs: input, outputs: output });
-        }
-
-        async function trainModels() {
-            const timeSteps = 60;
-            const xs = [];
-            const ys = [];
-            if (features.length < timeSteps) return;
-            const featureKeys = Object.keys(features[0]);
-            for (let i = timeSteps; i < features.length; i++) {
-                const window = features.slice(i - timeSteps, i).map(f => featureKeys.map(k => f[k] || 0));
-                xs.push(window);
-                ys.push(data[i].close - data[i - 1].close);
-            }
-            if (xs.length === 0) return;
-            const xsTensor = tf.tensor3d(xs);
-            const ysTensor = tf.tensor1d(ys);
-            const xs2d = tf.reshape(xsTensor, [xs.length, featureKeys.length]);
-            const ys2d = tf.reshape(ysTensor, [xs.length, 1]);
-
-            await models.linear.fit(xs2d, ysTensor, { epochs: 20 });
-            await models.mlp.fit(xs2d, ysTensor, { epochs: 20 });
-            await models.lstm.fit(xsTensor, ysTensor, { epochs: 20 });
-            await models.gru.fit(xsTensor, ysTensor, { epochs: 20 });
-            await models.cnn.fit(xsTensor, ysTensor, { epochs: 20 });
-            await models.transformer.fit(xsTensor, ysTensor, { epochs: 20 });
-            await models.autoencoder.fit(xs2d, xs2d, { epochs: 20 });
-        }
-
-        function backtest() {
-            const timeSteps = 60;
-            const slippage = 0.001;
-            const fee = 0.0005;
-            let portfolio = 10000;
-            let position = 0;
-            let returns = [];
-            let peak = portfolio;
-            let preds = [];
-            let actuals = [];
-            for (let i = timeSteps; i < data.length; i++) {
-                if (features.length < i - timeSteps + 1) continue;
-                const window = tf.tensor3d([features.slice(i - timeSteps, i).map(f => Object.values(f))]);
-                const pred = models.ensemble.predict(window).dataSync()[0];
-                const actual = data[i].close - data[i - 1].close;
-                preds.push(pred);
-                actuals.push(actual);
-                const signal = pred > 0 ? 1 : -1;
-                if (signal > 0 && position <= 0) {
-                    position = portfolio / data[i].close * (1 - fee - slippage);
-                    portfolio = 0;
-                    trades.push({ time: data[i].time * 1000, entry: data[i].close, direction: 'buy', setup: 'Ensemble signal positive', exit: null, pnl: null });
-                } else if (signal < 0 && position > 0) {
-                    portfolio = position * data[i].close * (1 - fee - slippage);
-                    position = 0;
-                    const lastTrade = trades[trades.length - 1];
-                    lastTrade.exit = data[i].close;
-                    lastTrade.pnl = (lastTrade.exit - lastTrade.entry) / lastTrade.entry * 100;
-                    returns.push(lastTrade.pnl / 100);
-                    peak = Math.max(peak, portfolio);
-                }
-            }
-            const meanRet = returns.reduce((a, b) => a + b, 0) / returns.length || 0;
-            const stdRet = Math.sqrt(returns.reduce((a, b) => a + Math.pow(b - meanRet, 2), 0) / returns.length) || 0;
-            metrics.sharpe = stdRet ? meanRet / stdRet * Math.sqrt(252 * 1440) : 0; // Annualized
-            metrics.drawdown = peak ? (peak - portfolio) / peak * 100 : 0;
-            metrics.mse = preds.reduce((a, b, i) => a + Math.pow(b - actuals[i], 2), 0) / preds.length || 0;
-            metrics.mae = preds.reduce((a, b, i) => a + Math.abs(b - actuals[i]), 0) / preds.length || 0;
-            metrics.accuracy = preds.filter((p, i) => Math.sign(p) === Math.sign(actuals[i])).length / preds.length * 100 || 0;
-            updateTable();
-            updateMetrics();
-        }
-
-        async function predictAndSignal() {
-            if (features.length < 60) return;
-            const window = tf.tensor3d([features.slice(-60).map(f => Object.values(f))]);
-            const pred = (await models.ensemble.predict(window)).dataSync()[0];
-            const anomaly = detectAnomaly(tf.reshape(window, [1, Object.keys(features[0]).length]));
-            if (anomaly) return;
-            const direction = pred > 0 ? 'buy' : 'sell';
-            signals.push({ time: data[data.length - 1].time, type: direction, price: data[data.length - 1].close });
-            executeTrade(direction, pred);
-            updateChart();
-        }
-
-        function detectAnomaly(x) {
-            const recon = models.autoencoder.predict(x);
-            const error = tf.mean(tf.square(tf.sub(x, recon))).dataSync()[0];
-            return error > 0.1;
-        }
-
-        function executeTrade(direction, pred) {
-            const entry = data[data.length - 1].close;
-            trades.push({ time: Date.now(), entry, direction, setup: `Ensemble pred: ${pred.toFixed(4)}`, exit: null, pnl: null });
-            setTimeout(() => {
-                if (data.length === 0) return;
-                const current = data[data.length - 1].close;
-                const lastTrade = trades[trades.length - 1];
-                lastTrade.exit = current;
-                lastTrade.pnl = (direction === 'buy' ? (current - entry) : (entry - current)) / entry * 100;
-                updateTable();
-            }, 300000);
-        }
-
-        function updateChart() {
-            Object.values(indicatorSeries).forEach(series => {
-                if (Array.isArray(series)) {
-                    series.forEach(s => chart.removeSeries(s));
-                } else {
-                    chart.removeSeries(series);
-                }
-            });
-            indicatorSeries = {};
-
-            if (document.getElementById('toggle-ema').checked) {
-                indicatorSeries.ema = chart.addLineSeries({ color: 'blue' });
-                indicatorSeries.ema.setData(indicatorsData.ema || []);
-            }
-            if (document.getElementById('toggle-sma').checked) {
-                indicatorSeries.sma = chart.addLineSeries({ color: 'green' });
-                indicatorSeries.sma.setData(indicatorsData.sma || []);
-            }
-            if (document.getElementById('toggle-macd').checked) {
-                indicatorSeries.macdLine = chart.addLineSeries({ color: 'red' });
-                indicatorSeries.macdLine.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.MACD })));
-                indicatorSeries.signalLine = chart.addLineSeries({ color: 'orange' });
-                indicatorSeries.signalLine.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.signal })));
-                indicatorSeries.histogram = chart.addHistogramSeries({ color: 'purple' });
-                indicatorSeries.histogram.setData((indicatorsData.macd || []).map(v => ({ time: v.time, value: v.histogram })));
-                indicatorSeries.macd = [indicatorSeries.macdLine, indicatorSeries.signalLine, indicatorSeries.histogram];
-            }
-            if (document.getElementById('toggle-rsi').checked) {
-                indicatorSeries.rsi = chart.addLineSeries({ color: 'cyan' });
-                indicatorSeries.rsi.setData(indicatorsData.rsi || []);
-            }
-            if (document.getElementById('toggle-atr').checked) {
-                indicatorSeries.atr = chart.addLineSeries({ color: 'magenta' });
-                indicatorSeries.atr.setData(indicatorsData.atr || []);
-            }
-            if (document.getElementById('toggle-bollinger').checked) {
-                indicatorSeries.bolMiddle = chart.addLineSeries({ color: 'black' });
-                indicatorSeries.bolMiddle.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.middle })));
-                indicatorSeries.bolUpper = chart.addLineSeries({ color: 'gray' });
-                indicatorSeries.bolUpper.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.upper })));
-                indicatorSeries.bolLower = chart.addLineSeries({ color: 'gray' });
-                indicatorSeries.bolLower.setData((indicatorsData.bollinger || []).map(v => ({ time: v.time, value: v.lower })));
-                indicatorSeries.bollinger = [indicatorSeries.bolMiddle, indicatorSeries.bolUpper, indicatorSeries.bolLower];
-            }
-            if (document.getElementById('toggle-vwap').checked) {
-                indicatorSeries.vwap = chart.addLineSeries({ color: 'brown' });
-                indicatorSeries.vwap.setData(indicatorsData.vwap || []);
-            }
-            if (document.getElementById('toggle-obv').checked) {
-                indicatorSeries.obv = chart.addLineSeries({ color: 'pink' });
-                indicatorSeries.obv.setData(indicatorsData.obv || []);
-            }
-            if (document.getElementById('toggle-chaikin').checked) {
-                indicatorSeries.chaikin = chart.addLineSeries({ color: 'lime' });
-                indicatorSeries.chaikin.setData(indicatorsData.chaikin || []);
-            }
-            if (document.getElementById('toggle-models').checked) {
-                candleSeries.setMarkers(signals.map(s => ({ time: s.time, position: s.type === 'buy' ? 'belowBar' : 'aboveBar', color: s.type === 'buy' ? '#00FF00' : '#FF0000', shape: 'circle', text: s.type })));
-            } else {
-                candleSeries.setMarkers([]);
-            }
-        }
-
-        function updateTable() {
-            const tbody = document.querySelector('#trades-table tbody');
-            tbody.innerHTML = trades.map(t => `<tr><td>${new Date(t.time).toLocaleString()}</td><td>${t.entry.toFixed(4)}</td><td>${t.exit ? t.exit.toFixed(4) : 'Open'}</td><td>${t.direction}</td><td>${t.pnl ? t.pnl.toFixed(2) + '%' : '0%'}</td><td>${t.setup}</td></tr>`).join('');
-        }
-
-        function updateMetrics() {
-            document.getElementById('metrics').innerHTML = `MSE: ${metrics.mse.toFixed(4)} | MAE: ${metrics.mae.toFixed(4)} | Accuracy: ${metrics.accuracy.toFixed(2)}% | Sharpe: ${metrics.sharpe.toFixed(2)} | Drawdown: ${metrics.drawdown.toFixed(2)}%`;
-        }
-
-        // Helper functions
-        function calculateDepthImbalance(depth) {
-            const bidVol = depth.bids.reduce((a, b) => a + parseFloat(b[1]), 0);
-            const askVol = depth.asks.reduce((a, b) => a + parseFloat(b[1]), 0);
-            return (bidVol - askVol) / (bidVol + askVol) || 0;
-        }
-
-        function calculateTradeImbalance(trades) {
-            const buys = trades.filter(t => !t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
-            const sells = trades.filter(t => t.isBuyerMaker).reduce((a, t) => a + parseFloat(t.qty), 0);
-            return (buys - sells) / (buys + sells) || 0;
-        }
-
-        function calculateTimeBetweenTrades(trades) {
-            if (trades.length < 2) return 0;
-            const times = trades.map(t => t.time);
-            const diffs = times.slice(1).map((t, i) => t - times[i]);
-            return diffs.reduce((a, b) => a + b, 0) / diffs.length / 1000 || 0;
-        }
-
-        function calculateExchangeInflow(transactions) {
-            return transactions.filter(t => t.to && t.to.owner_type === 'exchange').reduce((a, t) => a + (t.amount_usd || 0), 0);
-        }
-
-        function calculateExchangeOutflow(transactions) {
-            return transactions.filter(t => t.from && t.from.owner_type === 'exchange').reduce((a, t) => a + (t.amount_usd || 0), 0);
-        }
-
-        function calculateTopHolderConcentration(holders) {
-            const total = holders.reduce((a, h) => a + (h.uiAmount || 0), 0);
-            const top10 = holders.slice(0, 10).reduce((a, h) => a + (h.uiAmount || 0), 0);
-            return total ? top10 / total : 0;
-        }
-
-        function calculateTokenVelocity(transactions) {
-            return transactions.length / 60 || 0;
-        }
-
-        function calculateMintBurn(transactions) {
-            return transactions.filter(t => t.type === 'mint').length - transactions.filter(t => t.type === 'burn').length;
-        }
-
-        function calculateLpEvents(transactions) {
-            return transactions.filter(t => t.to && t.to.owner === 'liquidity_pool' || t.from && t.from.owner === 'liquidity_pool').length;
-        }
-
-        function analyzeSocialSentiment(posts) {
-            const positive = posts.filter(p => p.data.title.toLowerCase().includes('bullish') || p.data.title.toLowerCase().includes('up')).length;
-            const negative = posts.filter(p => p.data.title.toLowerCase().includes('bearish') || p.data.title.toLowerCase().includes('down')).length;
-            return posts.length ? (positive - negative) / posts.length : 0;
-        }
-
-        function calculateWhalePressure(feature) {
-            return feature.exchangeInflow - feature.exchangeOutflow;
-        }
-
-        function calculateLiquidityAlarm(feature) {
-            return feature.depthImbalance * feature.bidAskSpread;
-        }
-
-        function calculateHolderCohortMomentum(holders) {
-            return holders.length > 0 ? holders[0].uiAmount - holders[holders.length - 1].uiAmount : 0;
-        }
-
-        function calculateMemeMomentum(feature) {
-            return feature.socialSentiment + feature.trendsScore / 100;
-        }
-
-        init();
-    </script>
+</script>
 </body>
 </html>
